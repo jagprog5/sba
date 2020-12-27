@@ -38,9 +38,14 @@ SBA* or(SBA* a, SBA* b);
 // there is a small preference for bits closer to the end of the array to be left on.
 SBA* subsample(SBA* a, uint amount);
 
-// input in [0,1]
-// width is the number of total bits in the SBA. width >= r->size
+// input in [0,1], the value to encode
+// n is the number of total bits in the SBA. n >= r->size
 // r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
-void encodeLinear(float input, uint width, SBA* r);
+void encodeLinear(float input, uint n, SBA* r);
+
+// input is the the value to encode. it is encoded linearly, except its encoding wraps back to 0 as it approaches period
+// n is the number of total bits in the SBA. n >= r->size
+// r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
+void encodePeriodic(float input, float period, uint n, SBA* r);
 
 #endif

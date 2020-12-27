@@ -206,24 +206,42 @@ SBA* subsample(SBA* a, uint amount) {
     goto loop;
 }
 
-void encodeLinear(float input, uint width, SBA* r) {
-    uint span = r->size;
-    uint start_offset = ceil((width - r->size) * input);
-    for (; span > 0; --span) {
-        r->indices[span - 1] = start_offset + span - 1;
+void encodeLinear(float input, uint n, SBA* r) {
+    uint width = r->size;
+    uint start_offset = ceil((n - width) * input);
+    for (; width > 0; --width) {
+        r->indices[width - 1] = start_offset + width - 1;
+    }
+}
+
+void encodePeriodic(float input, float period, uint n, SBA* r) {
+    float remainder = fmod(input, period);
+    uint start_offset = ceil(remainder / period * n);
+    int32_t num_wrapped = (int32_t)(start_offset + r->size) - (int32_t)n;
+    uint num_remaining;
+    if (num_wrapped > 0) {
+        for (uint i = 0; i < num_wrapped; ++i) {
+            r->indices[i] = i;
+        }
+        num_remaining = r->size - num_wrapped;
+    } else {
+        num_remaining = r->size;
+        num_wrapped = 0;
+    }
+    for (uint i = 0; i < num_remaining; ++i) {
+        r->indices[i + num_wrapped] = start_offset + i;
     }
 }
 
 int main() {
-    // printf("%f\n", 1.0f / 10000 * 10000);
-    // SBA* a = allocSBA(2);
-    // a->size = a->capacity;
-    // for (float i = 0; i <=1; i += 0.1f) {
-    //     printf("%.2f: ", i);
-    //     encodeLinear(i, 10, a);
-    //     print(a);
-    // }
-    // free(a);
+    SBA* a = allocSBA(4);
+    a->size = a->capacity;
+    for (float i = 0; i <=1; i += 0.1f) {
+        printf("%.2f: ", i);
+        encodePeriodic(i, 0.5f, 15, a);
+        print(a);
+    }
+    free(a);
     // srand((uint)time(NULL));
     SBA* a = allocSBA(0);
     insert(a, 5);
