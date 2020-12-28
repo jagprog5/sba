@@ -33,10 +33,20 @@ SBA* and(SBA* a, SBA* b);
 // returns OR of two SBAs, as ptr to heap
 SBA* or(SBA* a, SBA* b);
 
-// randomly flips bits off in returned SBA
+// randomly flips bits off
 // amount is the # of bits that will remain on
 // there is a small preference for bits closer to the end of the array to be left on.
 SBA* subsample(SBA* a, uint amount);
+
+// randomly flips bits off
+// 1 / (2^n) chance of each bit remaining on. n is a power of 2, and must be <= logs(RAND_MAX + 1)
+// a's size in memory is left unchanged
+void subsample2(SBA* a, uint n);
+
+// randomly flips bits off
+// 1 / n chance of each bit remaining on
+// a's size in memory is left unchanged
+void subsample3(SBA* a, uint n);
 
 // input in [0,1], the value to encode
 // n is the number of total bits in the SBA. n >= r->size

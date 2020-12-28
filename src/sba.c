@@ -206,6 +206,42 @@ SBA* subsample(SBA* a, uint amount) {
     goto loop;
 }
 
+void subsample2(SBA* a, uint n) {
+    static uint num_bits = sizeof(int) * 8 - __builtin_clz(RAND_MAX);
+    uint bits_taken = num_bits;
+    uint and_mask = ((uint)1 << n) - 1;
+    uint to_offset = 0;
+    uint from_offset = 0;
+    uint r;
+    while (from_offset < a->size) {
+        bits_taken += n;
+        if (bits_taken > num_bits) {
+            bits_taken = 0;
+            r = rand();
+        }
+        if ((r & and_mask) != 0) {
+            ++from_offset;
+        } else {
+            a->indices[to_offset++] = a->indices[from_offset++];
+        }
+        r >>= n;
+    }
+    a->size = to_offset;
+}
+
+void subsample3(SBA* a, uint n) {
+    uint to_offset = 0;
+    uint from_offset = 0;
+    while (from_offset < a->size) {
+        if (rand() % n != 0) {
+            ++from_offset;
+        } else {
+            a->indices[to_offset++] = a->indices[from_offset++];
+        }
+    }
+    a->size = to_offset;
+}
+
 void encodeLinear(float input, uint n, SBA* r) {
     uint width = r->size;
     uint start_offset = ceil((n - width) * input);
@@ -234,35 +270,13 @@ void encodePeriodic(float input, float period, uint n, SBA* r) {
 }
 
 int main() {
-    SBA* a = allocSBA(4);
-    a->size = a->capacity;
-    for (float i = 0; i <=1; i += 0.1f) {
-        printf("%.2f: ", i);
-        encodePeriodic(i, 0.5f, 15, a);
-        print(a);
+    srand((uint)time(NULL));
+    SBA* a = allocSBA(8);
+    for (int i = 0; i < 8; ++i) {
+        insert(a, i);
     }
+    subsample2(a, 2);
+    print(a);
     free(a);
-    // srand((uint)time(NULL));
-    SBA* a = allocSBA(0);
-    insert(a, 5);
-    insert(a, 5);
-    insert(a, 1);
-    insert(a, 2);
-    insert(a, 7);
-    SBA* b = allocSBA(0);
-    insert(b, 0);
-    insert(b, 2);
-    insert(b, 7);
-    insert(b, 8);
-    insert(b, 9);
-    SBA* o = or(a,b);
-    // SBA* s = subsample(o, 4);
-    // // printf("%u\n", s->size);
-    print(o);
-    // print(s);
-    // free(a);
-    // free(b);
-    // free(o);
-    // free(s);
     return 0;
 }
