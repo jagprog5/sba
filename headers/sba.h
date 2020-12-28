@@ -3,12 +3,6 @@
 
 #include <stdint.h>
 
-/*
- * TODO create in_place functions to ease strain on malloc
- * - Write result SBA into first argument?
- * - Require pre-allocated ptr to SBA of proper size to write to?
- */
-
 typedef uint_fast32_t uint;
 
 // sparse bit array. sorted arraylist implementation
@@ -18,20 +12,55 @@ typedef struct SBA {
     uint capacity; // mem currently allocated for the list
 } SBA;
 
-// initial_cap should be a power of 2
-SBA* allocSBA(uint inital_cap);
+// initial_cap must be > 0
+// returns an empty SBA
+SBA* allocSBA(uint initial_cap);
 
 void freeSBA(SBA*);
 
+// reduces the capacity and memory allocated to a, to match its size
+void shortenSBA(SBA* a);
+
 // flips bit in array at index to ON
 // if the bit is already on, there is no effect (skips duplicate)
-void insert(SBA* a, uint bit_index);
+void turn_on(SBA* a, uint bit_index);
 
-// returns AND of two SBAs, as ptr to heap
-SBA* and(SBA* a, SBA* b);
+// flips bit in array at index to OFF
+// if the bit is already off, there is no effect
+void turn_off(SBA* a, uint bit_index);
 
-// returns OR of two SBAs, as ptr to heap
-SBA* or(SBA* a, SBA* b);
+// allocates a SBA with sufficient capacity to be used as the result in the AND op.
+// the allocated SBA has an uninitalized size, since this is set in the AND op
+// this is based on the argument SBAs' CURRENT SIZES, and not their capacities
+SBA* allocSBA_and(SBA*, SBA*);
+
+// ANDs a and b, and places the result in r
+// r->capacity >= min(a->size, b->size). r can be a or b
+void and(SBA* r, SBA* a, SBA* b);
+
+// allocates a SBA with sufficient capacity to be used as the result in the OR op.
+// the allocated SBA has an uninitalized size, since this is set in the OR op
+// this is based on the argument SBAs' CURRENT SIZES, and not their capacities
+SBA* allocSBA_or(SBA*, SBA*);
+
+// ORs a and b, and places the result in r
+// r must have a size of 0, and r->capacity >= a->size + b->size. 
+// Unlike the AND op, r can't be a or b.
+void or(SBA* r, SBA* a, SBA* b);
+
+// increases a by bitshifting n places
+void shift(SBA* a, uint n);
+
+// returns 1 if they are equal, and 0 if they are not equal
+int equal(SBA* a, SBA* b);
+
+// allocates a SBA with sufficient capacity to be used as the destination in the cp operation.
+// this is based on the argument SBA's CURRENT SIZE, and not its capacity
+SBA* allocSBA_cp(SBA* src);
+
+// copies the src to the dest
+// dest must have sufficient capacity (dest->capacity = src->size)
+void cp(SBA* dest, SBA* src);
 
 // randomly flips bits off
 // amount is the # of bits that will remain on
