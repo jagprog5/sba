@@ -12,22 +12,30 @@ typedef struct SBA {
     uint capacity; // mem currently allocated for the list
 } SBA;
 
+// leaves size uninitialized
+SBA* _allocSBA_nosetsize(uint initialCap);
+
 // initial_cap must be > 0
 // returns an empty SBA
-SBA* allocSBA(uint initial_cap);
+SBA* allocSBA(uint initialCap);
 
 void freeSBA(SBA*);
+
+void printSBA(SBA*);
 
 // reduces the capacity and memory allocated to a, to match its size
 void shortenSBA(SBA* a);
 
 // flips bit in array at index to ON
 // if the bit is already on, there is no effect (skips duplicate)
-void turn_on(SBA* a, uint bit_index);
+void turnOn(SBA* a, uint bitIndex);
 
 // flips bit in array at index to OFF
 // if the bit is already off, there is no effect
-void turn_off(SBA* a, uint bit_index);
+void turnOff(SBA* a, uint bitIndex);
+
+// turns bits in a to off that are also contained in rm
+void turnOff_all(SBA* a, SBA* rm);
 
 // allocates a SBA with sufficient capacity to be used as the result in the AND op.
 // the allocated SBA has an uninitalized size, since this is set in the AND op
@@ -38,15 +46,21 @@ SBA* allocSBA_and(SBA*, SBA*);
 // r->capacity >= min(a->size, b->size). r can be a or b
 void and(SBA* r, SBA* a, SBA* b);
 
+// returns the number of bits on in a AND b
+uint and_size(SBA* a, SBA* b);
+
 // allocates a SBA with sufficient capacity to be used as the result in the OR op.
 // the allocated SBA has an uninitalized size, since this is set in the OR op
 // this is based on the argument SBAs' CURRENT SIZES, and not their capacities
 SBA* allocSBA_or(SBA*, SBA*);
 
 // ORs a and b, and places the result in r
-// r must have a size of 0, and r->capacity >= a->size + b->size. 
+// r->capacity >= a->size + b->size. 
 // Unlike the AND op, r can't be a or b.
 void or(SBA* r, SBA* a, SBA* b);
+
+// returns the number of bits on in a OR b
+uint or_size(SBA* a, SBA* b);
 
 // increases a by bitshifting n places
 void shift(SBA* a, uint n);

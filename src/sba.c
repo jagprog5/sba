@@ -3,18 +3,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <time.h>
 #include <math.h>
 
-SBA* _allocSBA_nosetsize(uint initial_cap) {
+SBA* _allocSBA_nosetsize(uint initialCap) {
     SBA* a = malloc(sizeof(*a));
-    a->indices = malloc(sizeof(uint) * initial_cap);
-    a->capacity = initial_cap;
+    a->indices = malloc(sizeof(*a->indices) * initialCap);
+    a->capacity = initialCap;
     return a;
 }
 
-SBA* allocSBA(uint initial_cap) {
-    SBA* a = _allocSBA_nosetsize(initial_cap);
+SBA* allocSBA(uint initialCap) {
+    SBA* a = _allocSBA_nosetsize(initialCap);
     a->size = 0;
     return a;
 }
@@ -29,7 +28,7 @@ void freeSBA(SBA* a) {
     free(a);
 }
 
-void print(SBA* a) { // debug / testing purposes
+void printSBA(SBA* a) { // debug / testing purposes
     if (!a->size) {
         puts("SBA is empty!");
         return;
@@ -44,54 +43,75 @@ void print(SBA* a) { // debug / testing purposes
     putchar('\n');
 }
 
-void turn_on(SBA* a, uint bit_index) {
+void turnOn(SBA* a, uint bitIndex) {
     if (a->size >= a->capacity) {
         a->capacity <<= 1;
-        if (a->capacity == 0) {
-            a->capacity = 1;
-        }
         a->indices = realloc(a->indices, sizeof(uint) * a->capacity);
     }
     int_fast32_t left = 0;
     int_fast32_t right = a->size - 1;
-    int_fast32_t middle;
+    int_fast32_t middle = 0;
     uint mid_val = UINT_FAST32_MAX;
     while (left <= right) {
         middle = (right + left) / 2;
         mid_val = a->indices[middle];
-        if (mid_val < bit_index) {
+        if (mid_val < bitIndex) {
             left = middle + 1;
-        } else if (mid_val > bit_index) {
+        } else if (mid_val > bitIndex) {
             right = middle - 1;
         } else {
             return; // skip duplicate
         }
     }
-    if (bit_index > mid_val) {
+    if (bitIndex > mid_val) {
         middle += 1;
     }
     memmove(a->indices + middle + 1, a->indices + middle, sizeof(uint) * (a->size - middle));
     a->size += 1;
-    a->indices[middle] = bit_index;
+    a->indices[middle] = bitIndex;
 }
 
-void turn_off(SBA* a, uint bit_index) {
+void turnOff(SBA* a, uint bitIndex) {
     int_fast32_t right = a->size - 1;
     int_fast32_t left = 0;
     int_fast32_t middle;
     while (left <= right) {
         middle = (right + left) / 2;
         uint mid_val = a->indices[middle];
-        if (mid_val == bit_index) {
+        if (mid_val == bitIndex) {
             a->size -= 1;
             memmove(a->indices + middle, a->indices + middle + 1, sizeof(uint) * (a->size - middle));
             return;
-        } else if (mid_val < bit_index) {
+        } else if (mid_val < bitIndex) {
             left = middle + 1;
         } else {
             right = middle - 1;
         }
     }
+}
+
+void turnOff_all(SBA* a, SBA* rm) {
+    uint a_from = 0;
+    uint a_to = 0;
+    uint a_val;
+    uint rm_offset = 0;
+    uint rm_val;
+    while (a_from < a->size) {
+        if (rm_offset < rm->size) {
+            a_val = a->indices[a_from];
+            rm_val = rm->indices[rm_offset];
+            if (rm_val < a_val) {
+                rm_offset += 1;
+                continue;
+            } else if (rm_val == a_val) {
+                rm_offset += 1;
+                a_from += 1;
+                continue;
+            }
+        }
+        a->indices[a_to++] = a->indices[a_from++];
+    }
+    a->size = a_to;
 }
 
 SBA* allocSBA_and(SBA* a, SBA* b) {
@@ -137,6 +157,44 @@ void and(SBA* r, SBA* a, SBA* b) {
     }
     end:
     r->size = r_size;
+}
+
+uint and_size(SBA* a, SBA* b) {
+    uint size = 0;
+    uint a_offset = 0;
+    uint a_val;
+    uint a_size = a->size; // store in case r = a
+    uint b_offset = 0;
+    uint b_val;
+    uint b_size = b->size; // store in case r = b
+    get_both:
+    if (a_offset >= a_size) {
+        return size;
+    }
+    a_val = a->indices[a_offset++];
+    if (b_offset >= b_size) {
+        return size;
+    }
+    b_val = b->indices[b_offset++];
+    loop:
+    if (a_val < b_val) {
+        // get a
+        if (a_offset >= a_size) {
+            return size;
+        }
+        a_val = a->indices[a_offset++];
+        goto loop;
+    } else if (a_val == b_val) {
+        size += 1;
+        goto get_both;
+    } else {
+        // get b
+        if (b_offset >= b_size) {
+            return size;
+        }
+        b_val = b->indices[b_offset++];
+        goto loop;
+    }
 }
 
 SBA* allocSBA_or(SBA* a, SBA* b) {
@@ -204,6 +262,65 @@ void or(SBA* r, SBA* a, SBA* b) {
 
     end:
     r->size = r_size;
+}
+
+uint or_size(SBA* a, SBA* b) {
+    uint size = 0;
+    uint a_offset = 0;
+    uint a_val;
+    uint b_offset = 0;
+    uint b_val;
+    get_both:
+    if (a_offset >= a->size) {
+        if (!b) {
+            return size;
+        }
+        a = NULL;
+        goto get_b;
+    }
+    a_val = a->indices[a_offset++];
+    if (b_offset >= b->size) {
+        if (!a) {
+            return size;
+        }
+        b = NULL;
+        goto loop;
+    }
+    b_val = b->indices[b_offset++];
+
+    loop:
+    if ((a && b && a_val < b_val) || (a && !b)) {
+        size += 1;
+        goto get_a;
+    } else if ((a && b && a_val > b_val) || (!a && b)) {
+        size += 1;
+        goto get_b;
+    } else if (a && b && a_val == b_val) {
+        size += 1;
+        goto get_both;
+    }
+
+    get_a:
+    if (a_offset >= a->size) {
+        if (!b) {
+            return size;
+        }
+        a = NULL;
+        goto loop;
+    }
+    a_val = a->indices[a_offset++];
+    goto loop;
+
+    get_b:
+    if (b_offset >= b->size) {
+        if (!a) {
+            return size;
+        }
+        b = NULL;
+        goto loop;
+    }
+    b_val = b->indices[b_offset++];
+    goto loop;
 }
 
 void shift(SBA* a, uint n) {
@@ -315,30 +432,3 @@ void encodePeriodic(float input, float period, uint n, SBA* r) {
     }
 }
 
-int main() {
-    SBA* a = allocSBA(1);
-    // turn_off(a, 0);
-    turn_on(a, 1);
-    turn_on(a, 2);
-    turn_on(a, 0);
-    turn_on(a, 4);
-    turn_on(a, 4);
-    // for (int i = 0; i < 100; ++i) {
-    //     print(a);
-    //     turn_on(a, rand() % 200);
-    //     print(a);
-    //     turn_off(a, rand() % 200);
-    //     print(a);
-    // }
-    print(a);
-    // SBA* a = allocSBA(8);
-    // SBA* b = allocSBA(8);
-    // for (int i = 7; i > -1; --i) {
-    //     turn_on(a, i);
-    //     turn_on(b, i + 1);
-    // }
-    // SBA* r = a;
-    // and(r, a, b);
-    // print(r);
-    return 0;
-}
