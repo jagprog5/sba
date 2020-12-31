@@ -91,6 +91,9 @@ void subsample2(SBA* a, uint n);
 // a's size in memory is left unchanged
 void subsample3(SBA* a, uint n);
 
+// returns a subsample of a, with a rate of retaining each bit
+SBA* subsample4(SBA* a, float rate);
+
 // input in [0,1], the value to encode
 // n is the number of total bits in the SBA. n >= r->size
 // r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size

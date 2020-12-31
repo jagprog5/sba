@@ -91,13 +91,15 @@ void turnOff(SBA* a, uint bitIndex) {
 }
 
 void turnOff_all(SBA* a, SBA* rm) {
+    uint a_size = a->size;
+    uint rm_size = rm->size;
     uint a_from = 0;
     uint a_to = 0;
     uint a_val;
     uint rm_offset = 0;
     uint rm_val;
-    while (a_from < a->size) {
-        if (rm_offset < rm->size) {
+    while (a_from < a_size) {
+        if (rm_offset < rm_size) {
             a_val = a->indices[a_from];
             rm_val = rm->indices[rm_offset];
             if (rm_val < a_val) {
@@ -403,6 +405,19 @@ void subsample3(SBA* a, uint n) {
         }
     }
     a->size = to_offset;
+}
+
+SBA* subsample4(SBA* a, float rate) {
+    uint a_size = a->size;
+    SBA* s = _allocSBA_nosetsize(a_size);
+    uint s_size = 0;
+    for (uint i = 0; i < a_size; ++i) {
+        if ((float)rand() / RAND_MAX < rate) {
+            s->indices[s_size++] = a->indices[i];
+        }
+    }
+    s->size = s_size;
+    return s;
 }
 
 void encodeLinear(float input, uint n, SBA* r) {
