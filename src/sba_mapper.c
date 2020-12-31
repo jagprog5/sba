@@ -71,7 +71,11 @@ typedef struct {
     uint value;
 } TwoTuple;
 
-void doMapper(SBA* output, SBAMapper* m, SBA* input) {
+int _cmp_by_index(const void * a, const void * b) {
+   return ((TwoTuple*)a)->index - ((TwoTuple*)b)->index;
+}
+
+void doMapper(SBA* output, SBAMapper* m, SBA* input, uint_fast8_t doTraining) {
     uint numOutputs = m->numOutputs;
     uint8_t threshold = m->connectionStrengthThreshold;
     uint input_arr_size = input->size;
@@ -105,53 +109,116 @@ void doMapper(SBA* output, SBAMapper* m, SBA* input) {
                 }
             } else if (input_arr_value < inputIndex) {
                 goto next_input_arr_bit;
-            } else if (input_arr_value > inputIndex) {
+            } else {
                 input_arr_prev_value_valid = 1;
             }
         }
     }
     // =========================================================================
-    // get the top n indices, in order, from an unsorted list, and place in output
+    // at this point we have the output scores
+    // get the top n scores' indices, in order, from an unsorted list, and place in output
     uint numActiveOutputs = m->numActiveOutputs;
     uint sizeActiveOutputs = 0;
     TwoTuple activeOutputs[numActiveOutputs];
     for (uint i = 0; i < numOutputs; ++i) {
         uint score = outputScores[i];
-        printf("%ld %ld\n", i, score);
-        uint_fast8_t pushing = 0;
-        TwoTuple pushVal;
-        for (uint j = 0; j < sizeActiveOutputs; ++j) {
-            if (!pushing) {
-                if (score <= activeOutputs[j].value) {
-                    continue;
-                }
-                pushing = 1;
-                pushVal = (TwoTuple){i, score};
+        int_fast32_t left = 0;
+        int_fast32_t right = sizeActiveOutputs - 1;
+        int_fast32_t middle = 0;
+        uint mid_val = 0;
+        while (left <= right) {
+            middle = (right + left) / 2;
+            mid_val = activeOutputs[middle].value;
+            if (mid_val > score) {
+                left = middle + 1;
+            } else if (mid_val < score) {
+                right = middle - 1;
+            } else {
+                break;
             }
-            TwoTuple tmp =  activeOutputs[j];
-            activeOutputs[j] = pushVal;
-            pushVal = tmp;
         }
-        if (sizeActiveOutputs < numActiveOutputs) {
-            activeOutputs[sizeActiveOutputs++] = pushing ? pushVal : (TwoTuple){i, score};
+        if (score < mid_val) {
+            middle += 1;
         }
+        uint tuplesToMove;
+        if (sizeActiveOutputs >= numActiveOutputs) {
+            // array is full
+            if (middle == numActiveOutputs) {
+                continue; // skip appending to end of array. Also, can't have memmove w/ negative n
+            }
+            tuplesToMove = numActiveOutputs - 1 - middle;
+        } else {
+            // array can expand
+            tuplesToMove = sizeActiveOutputs++ - middle;
+        }
+        memmove(activeOutputs + middle + 1, activeOutputs + middle, sizeof(TwoTuple) * tuplesToMove);
+        activeOutputs[middle] = (TwoTuple){i, score};
     }
+    qsort(activeOutputs, sizeActiveOutputs, sizeof(TwoTuple), _cmp_by_index);
     for (int i = 0; i < sizeActiveOutputs; ++i) {
         output->indices[i] = activeOutputs[i].index;
     }
     output->size = sizeActiveOutputs;
+    // =============================================================================
+    if (!doTraining) return;
+    uint8_t connectionStrengthDelta = m->connectionStrengthDelta;
+    for (uint i = 0; i < sizeActiveOutputs; ++i) {
+        SBAMapperOutput* mo = m->outputs + activeOutputs[i].index;
+        uint numConnections = mo->numConnections;
+        uint input_arr_index = 0;
+        uint input_arr_value;
+        uint_fast8_t input_arr_prev_value_valid = 0;
+        for (uint j = 0; j < numConnections; ++j) {
+            uint inputIndex = mo->inputBits[j];
+            uint8_t strength;
+            // check if the input is on for this connection
+            // if it is, increment the strength, else, decrement
+            next_input_arr_bit2:
+            if (!input_arr_prev_value_valid) {
+                if (input_arr_index >= input_arr_size) {
+                    input_arr_value = 0;
+                    // the input bit has not yet been found and the end of the inputs has been reached
+                    goto input_known;
+                }
+            } else {
+                input_arr_prev_value_valid = 0;
+            }
+            input_arr_value = input->indices[input_arr_index++];
+            if (input_arr_value == inputIndex) {
+                input_arr_value = 1;
+            } else if (input_arr_value < inputIndex) {
+                goto next_input_arr_bit2;
+            } else {
+                input_arr_prev_value_valid = 1;
+                input_arr_value = 0;
+            }
+
+            input_known:
+            strength = mo->strengths[j];
+            if (input_arr_value) {
+                if (strength <= (int)UINT8_MAX - connectionStrengthDelta) {
+                    mo->strengths[j] = strength + connectionStrengthDelta;
+                }
+            } else {
+                if (strength >= connectionStrengthDelta) {
+                    mo->strengths[j] = strength - connectionStrengthDelta;
+                }
+            }
+        }
+    }
 }
 
 int main() {
     srand(time(NULL));
-    SBAMapper* m = allocSBAMapper(3, 3, 0.5f, 2, 100, 1);
+    SBAMapper* m = allocSBAMapper(3, 3, 0.5f, 2, 0, 1);
     printSBAMapper(m);
     SBA* input = allocSBA(3);
     turnOn(input, 0);
     turnOn(input, 1);
     turnOn(input, 2);
     SBA* output = allocSBA_mapper_output(m);
-    doMapper(output, m, input);
+    doMapper(output, m, input, 1);
     printSBA(output);
+    printSBAMapper(m);
     return 0;
 }
