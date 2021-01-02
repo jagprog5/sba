@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-typedef uint_fast32_t uint;
+typedef uint64_t uint;
 
 // sparse bit array. sorted arraylist implementation
 typedef struct SBA {
@@ -35,19 +35,19 @@ void turnOn(SBA* a, uint bitIndex);
 void turnOff(SBA* a, uint bitIndex);
 
 // turns bits in a to off that are also contained in rm
-void turnOff_all(SBA* a, SBA* rm);
+void turnOffAll(SBA* a, SBA* rm);
 
 // allocates a SBA with sufficient capacity to be used as the result in the AND op.
 // the allocated SBA has an uninitalized size, since this is set in the AND op
 // this is based on the argument SBAs' CURRENT SIZES, and not their capacities
-SBA* allocSBA_and(SBA*, SBA*);
+SBA* allocSBA_andBits(SBA*, SBA*);
 
 // ANDs a and b, and places the result in r
 // r->capacity >= min(a->size, b->size). r can be a or b
-void and(SBA* r, SBA* a, SBA* b);
+void andBits(SBA* r, SBA* a, SBA* b);
 
 // returns the number of bits on in a AND b
-uint and_size(SBA* a, SBA* b);
+uint andSize(SBA* a, SBA* b);
 
 // allocates a SBA with sufficient capacity to be used as the result in the OR op.
 // the allocated SBA has an uninitalized size, since this is set in the OR op
@@ -57,16 +57,16 @@ SBA* allocSBA_or(SBA*, SBA*);
 // ORs a and b, and places the result in r
 // r->capacity >= a->size + b->size. 
 // Unlike the AND op, r can't be a or b.
-void or(SBA* r, SBA* a, SBA* b);
+void orBits(SBA* r, SBA* a, SBA* b);
 
 // returns the number of bits on in a OR b
-uint or_size(SBA* a, SBA* b);
+uint orSize(SBA* a, SBA* b);
 
 // increases a by bitshifting n places
 void shift(SBA* a, uint n);
 
 // returns 1 if they are equal, and 0 if they are not equal
-int equal(SBA* a, SBA* b);
+uint8_t equal(SBA* a, SBA* b);
 
 // allocates a SBA with sufficient capacity to be used as the destination in the cp operation.
 // this is based on the argument SBA's CURRENT SIZE, and not its capacity

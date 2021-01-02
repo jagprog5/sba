@@ -1,6 +1,7 @@
 #include "sba.h"
 
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -28,15 +29,13 @@ void freeSBA(SBA* a) {
     free(a);
 }
 
-void printSBA(SBA* a) { // debug / testing purposes
-    if (!a->size) {
-        puts("SBA is empty!");
-        return;
+void printSBA(SBA* a) {
+    if (a->size != 0) {
+        for (int i = 0; i < a->size - 1; ++i) {
+            printf("  ");
+        }
+        puts("V");
     }
-    for (int i = 0; i < a->size - 1; ++i) {
-        printf("  ");
-    }
-    puts("V");
     for (int i = 0; i < a->capacity; ++i) {
         printf("%d ", (int)a->indices[i]);
     }
@@ -48,10 +47,10 @@ void turnOn(SBA* a, uint bitIndex) {
         a->capacity <<= 1;
         a->indices = realloc(a->indices, sizeof(uint) * a->capacity);
     }
-    int_fast32_t left = 0;
-    int_fast32_t right = a->size - 1;
-    int_fast32_t middle = 0;
-    uint mid_val = UINT_FAST32_MAX;
+    int64_t left = 0;
+    int64_t right = a->size - 1;
+    int64_t middle = 0;
+    uint mid_val = UINT64_MAX;
     while (left <= right) {
         middle = (right + left) / 2;
         mid_val = a->indices[middle];
@@ -72,9 +71,9 @@ void turnOn(SBA* a, uint bitIndex) {
 }
 
 void turnOff(SBA* a, uint bitIndex) {
-    int_fast32_t right = a->size - 1;
-    int_fast32_t left = 0;
-    int_fast32_t middle;
+    int64_t right = a->size - 1;
+    int64_t left = 0;
+    int64_t middle;
     while (left <= right) {
         middle = (right + left) / 2;
         uint mid_val = a->indices[middle];
@@ -90,7 +89,7 @@ void turnOff(SBA* a, uint bitIndex) {
     }
 }
 
-void turnOff_all(SBA* a, SBA* rm) {
+void turnOffAll(SBA* a, SBA* rm) {
     uint a_size = a->size;
     uint rm_size = rm->size;
     uint a_from = 0;
@@ -116,11 +115,11 @@ void turnOff_all(SBA* a, SBA* rm) {
     a->size = a_to;
 }
 
-SBA* allocSBA_and(SBA* a, SBA* b) {
+SBA* allocSBA_andBits(SBA* a, SBA* b) {
     return _allocSBA_nosetsize(a->size < b->size ? a->size : b->size); // and sets the size
 }
 
-void and(SBA* r, SBA* a, SBA* b) {
+void andBits(SBA* r, SBA* a, SBA* b) {
     uint a_offset = 0;
     uint a_val;
     uint a_size = a->size; // store in case r = a
@@ -161,14 +160,14 @@ void and(SBA* r, SBA* a, SBA* b) {
     r->size = r_size;
 }
 
-uint and_size(SBA* a, SBA* b) {
+uint andSize(SBA* a, SBA* b) {
     uint size = 0;
     uint a_offset = 0;
     uint a_val;
-    uint a_size = a->size; // store in case r = a
+    uint a_size = a->size;
     uint b_offset = 0;
     uint b_val;
-    uint b_size = b->size; // store in case r = b
+    uint b_size = b->size;
     get_both:
     if (a_offset >= a_size) {
         return size;
@@ -203,7 +202,7 @@ SBA* allocSBA_or(SBA* a, SBA* b) {
     return _allocSBA_nosetsize(a->size + b->size);
 }
 
-void or(SBA* r, SBA* a, SBA* b) {
+void orBits(SBA* r, SBA* a, SBA* b) {
     uint a_offset = 0;
     uint a_val;
     uint b_offset = 0;
@@ -266,7 +265,7 @@ void or(SBA* r, SBA* a, SBA* b) {
     r->size = r_size;
 }
 
-uint or_size(SBA* a, SBA* b) {
+uint orSize(SBA* a, SBA* b) {
     uint size = 0;
     uint a_offset = 0;
     uint a_val;
@@ -326,16 +325,16 @@ uint or_size(SBA* a, SBA* b) {
 }
 
 void shift(SBA* a, uint n) {
-    for (int i = 0; i < a->size; ++i) {
+    for (uint i = 0; i < a->size; ++i) {
         a->indices[i] += n;
     }
 }
 
-int equal(SBA* a, SBA* b) {
+uint8_t equal(SBA* a, SBA* b) {
     if (a->size != b->size) {
         return 0;
     }
-    for (int i = 0; i < a->size; ++i) {
+    for (uint i = 0; i < a->size; ++i) {
         if (a->indices[i] != b->indices[i]) {
             return 0;
         }
@@ -447,3 +446,6 @@ void encodePeriodic(float input, float period, uint n, SBA* r) {
     }
 }
 
+void seed_rand() {
+    srand(time(NULL));
+}

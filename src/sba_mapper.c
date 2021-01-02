@@ -9,19 +9,19 @@ SBAMapper* allocSBAMapper(uint numInputs,
         uint numOutputs,
         float connectionLikelihood,
         uint numActiveOutputs,
-        uint_fast8_t connectionStrengthThreshold,
-        uint_fast8_t connectionStrengthDelta) {
+        uint8_t connectionStrengthThreshold,
+        uint8_t connectionStrengthDelta) {
     SBAMapper* m = malloc(sizeof(*m));
     m->numOutputs = numOutputs;
     m->outputs = malloc(sizeof(*m->outputs) * numOutputs);
-    for (int i = 0; i < numOutputs; ++i) {
+    for (uint i = 0; i < numOutputs; ++i) {
         uint inputsConnected = 0;
         uint inputBits[numInputs];
-        uint_fast8_t strengths[numInputs];
-        for (int j = 0; j < numInputs; ++j) {
+        uint8_t strengths[numInputs];
+        for (uint j = 0; j < numInputs; ++j) {
             if ((float)rand() / RAND_MAX < connectionLikelihood) {
                 inputBits[inputsConnected] = j;
-                strengths[inputsConnected++] = rand() % UINT_FAST8_MAX;
+                strengths[inputsConnected++] = rand() % UINT8_MAX;
             }
         }
         SBAMapperOutput* mo = m->outputs + i;
@@ -38,7 +38,7 @@ SBAMapper* allocSBAMapper(uint numInputs,
 }
 
 void freeSBAMapper(SBAMapper* m) {
-    for (int i = 0; i < m->numOutputs; ++i) {
+    for (uint i = 0; i < m->numOutputs; ++i) {
         SBAMapperOutput* mo = m->outputs + i;
         free(mo->inputBits);
         free(mo->strengths);
@@ -56,13 +56,13 @@ void printSBAMapper(SBAMapper* m) {
     for (uint i = 0; i < m->numOutputs; ++i) {
         printf("Output %ld:\n", i);
         SBAMapperOutput* mo = m->outputs + i;
-        for (int j = 0; j < mo->numConnections; ++j) {
+        for (uint j = 0; j < mo->numConnections; ++j) {
             printf("\ti:%ld, s:%d\n", mo->inputBits[j], mo->strengths[j]);
         }
     }
 }
 
-SBA* allocSBA_mapper_output(SBAMapper* m) {
+SBA* allocSBA_doMapper(SBAMapper* m) {
     return _allocSBA_nosetsize(m->numActiveOutputs);
 }
 
@@ -75,19 +75,19 @@ int _cmp_by_index(const void * a, const void * b) {
    return ((TwoTuple*)a)->index - ((TwoTuple*)b)->index;
 }
 
-void doMapper(SBA* output, SBAMapper* m, SBA* input, uint_fast8_t doTraining) {
+void doMapper(SBA* output, SBAMapper* m, SBA* input, uint8_t doTraining) {
     uint numOutputs = m->numOutputs;
     uint8_t threshold = m->connectionStrengthThreshold;
     uint input_arr_size = input->size;
     uint outputScores[numOutputs];
     memset(outputScores, 0, sizeof(outputScores));
-    for (int outputIndex = 0; outputIndex < numOutputs; ++outputIndex) {
+    for (uint outputIndex = 0; outputIndex < numOutputs; ++outputIndex) {
         SBAMapperOutput* mo = m->outputs + outputIndex;
         uint numConnections = mo->numConnections;
         uint input_arr_index = 0;
         uint input_arr_value;
         uint_fast8_t input_arr_prev_value_valid = 0;
-        for (int conectionIndex = 0; conectionIndex < numConnections; ++conectionIndex) {
+        for (uint conectionIndex = 0; conectionIndex < numConnections; ++conectionIndex) {
             uint inputIndex = mo->inputBits[conectionIndex];
             next_input_arr_bit:
             if (!input_arr_prev_value_valid) {
@@ -114,6 +114,10 @@ void doMapper(SBA* output, SBAMapper* m, SBA* input, uint_fast8_t doTraining) {
             }
         }
     }
+    // =============================================================================
+    // TODO decrease output scores for outputs that are active too often, and increase for inactive outputs
+    // Moving average of some sort...
+
     // =========================================================================
     // at this point we have the output scores
     // get the top n scores' indices, in order, from an unsorted list, and place in output
@@ -122,9 +126,9 @@ void doMapper(SBA* output, SBAMapper* m, SBA* input, uint_fast8_t doTraining) {
     TwoTuple activeOutputs[numActiveOutputs];
     for (uint i = 0; i < numOutputs; ++i) {
         uint score = outputScores[i];
-        int_fast32_t left = 0;
-        int_fast32_t right = sizeActiveOutputs - 1;
-        int_fast32_t middle = 0;
+        int64_t left = 0;
+        int64_t right = sizeActiveOutputs - 1;
+        int64_t middle = 0;
         uint mid_val = 0;
         while (left <= right) {
             middle = (right + left) / 2;
@@ -155,7 +159,7 @@ void doMapper(SBA* output, SBAMapper* m, SBA* input, uint_fast8_t doTraining) {
         activeOutputs[middle] = (TwoTuple){i, score};
     }
     qsort(activeOutputs, sizeActiveOutputs, sizeof(TwoTuple), _cmp_by_index);
-    for (int i = 0; i < sizeActiveOutputs; ++i) {
+    for (uint i = 0; i < sizeActiveOutputs; ++i) {
         output->indices[i] = activeOutputs[i].index;
     }
     output->size = sizeActiveOutputs;
@@ -216,7 +220,7 @@ int main() {
     turnOn(input, 0);
     turnOn(input, 1);
     turnOn(input, 2);
-    SBA* output = allocSBA_mapper_output(m);
+    SBA* output = allocSBA_doMapper(m);
     doMapper(output, m, input, 1);
     printSBA(output);
     printSBAMapper(m);

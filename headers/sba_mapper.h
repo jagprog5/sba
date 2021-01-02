@@ -41,8 +41,8 @@ void printSBAMapper(SBAMapper*);
 
 // allocates a SBA with sufficient capacity to be used as the output of the doMapper function
 // the allocated SBA has an uninitalized size, since this is set in the function
-SBA* allocSBA_mapper_output(SBAMapper* m);
+SBA* allocSBA_doMapper(SBAMapper* m);
 
-void doMapper(SBA* output, SBAMapper* m, SBA* input, uint_fast8_t doTraining);
+void doMapper(SBA* output, SBAMapper* m, SBA* input, uint8_t doTraining);
 
 #endif
