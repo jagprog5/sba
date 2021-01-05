@@ -43,10 +43,6 @@ void printSBA(SBA* a) {
 }
 
 void turnOn(SBA* a, uint bitIndex) {
-    if (a->size >= a->capacity) {
-        a->capacity <<= 1;
-        a->indices = realloc(a->indices, sizeof(uint) * a->capacity);
-    }
     int64_t left = 0;
     int64_t right = a->size - 1;
     int64_t middle = 0;
@@ -64,6 +60,10 @@ void turnOn(SBA* a, uint bitIndex) {
     }
     if (bitIndex > mid_val) {
         middle += 1;
+    }
+    if (a->size >= a->capacity) {
+        a->capacity <<= 1;
+        a->indices = realloc(a->indices, sizeof(uint) * a->capacity);
     }
     memmove(a->indices + middle + 1, a->indices + middle, sizeof(uint) * (a->size - middle));
     a->size += 1;
@@ -87,6 +87,24 @@ void turnOff(SBA* a, uint bitIndex) {
             right = middle - 1;
         }
     }
+}
+
+uint8_t getBit(SBA* a, uint bitIndex) {
+    int64_t right = a->size - 1;
+    int64_t left = 0;
+    int64_t middle;
+    while (left <= right) {
+        middle = (right + left) / 2;
+        uint mid_val = a->indices[middle];
+        if (mid_val == bitIndex) {
+            return 1;
+        } else if (mid_val < bitIndex) {
+            left = middle + 1;
+        } else {
+            right = middle - 1;
+        }
+    }
+    return 0;
 }
 
 void turnOffAll(SBA* a, SBA* rm) {
@@ -202,7 +220,7 @@ SBA* allocSBA_or(SBA* a, SBA* b) {
     return _allocSBA_nosetsize(a->size + b->size);
 }
 
-void orBits(SBA* r, SBA* a, SBA* b) {
+void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
     uint a_offset = 0;
     uint a_val;
     uint b_offset = 0;
@@ -235,7 +253,7 @@ void orBits(SBA* r, SBA* a, SBA* b) {
         r->indices[r_size++] = b_val;
         goto get_b;
     } else if (a && b && a_val == b_val) {
-        r->indices[r_size++] = a_val;
+        if (!exclusive) r->indices[r_size++] = a_val;
         goto get_both;
     }
 
@@ -265,7 +283,7 @@ void orBits(SBA* r, SBA* a, SBA* b) {
     r->size = r_size;
 }
 
-uint orSize(SBA* a, SBA* b) {
+uint orSize(SBA* a, SBA* b, uint8_t exclusive) {
     uint size = 0;
     uint a_offset = 0;
     uint a_val;
@@ -297,7 +315,7 @@ uint orSize(SBA* a, SBA* b) {
         size += 1;
         goto get_b;
     } else if (a && b && a_val == b_val) {
-        size += 1;
+        if (!exclusive) size += 1;
         goto get_both;
     }
 
@@ -324,10 +342,24 @@ uint orSize(SBA* a, SBA* b) {
     goto loop;
 }
 
-void shift(SBA* a, uint n) {
+void rshift(SBA* a, uint n) {
     for (uint i = 0; i < a->size; ++i) {
         a->indices[i] += n;
     }
+}
+
+void lshift(SBA* a, uint n) {
+    uint flow_count = 0;
+    for (uint i = 0; i < a->size; ++i) {
+        uint val = a->indices[i];
+        if (val < n) {
+            flow_count += 1;
+            continue;
+        }
+        a->indices[i] = val - n;
+    }
+    memmove(a->indices, a->indices + flow_count, sizeof(uint) * (a->size - flow_count));
+    a->size -= flow_count;
 }
 
 uint8_t equal(SBA* a, SBA* b) {

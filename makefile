@@ -4,7 +4,7 @@ HEADERDIR = headers
 
 SOURCES := $(wildcard $(SOURCEDIR)/*.c)
 OBJECTS := $(patsubst $(SOURCEDIR)/%.c,$(BUILDDIR)/%.o,$(SOURCES))
-SHARED_LIBRARIES := $(patsubst $(SOURCEDIR)/%.c,$(BUILDDIR)/%.so,$(SOURCES))
+SHARED_LIBRARY = $(BUILDDIR)/ml_lib.so
 
 CC = gcc
 CFLAGS = -std=c99 -Wall # -Ofast 
@@ -21,8 +21,8 @@ $(EXECUTABLE): $(OBJECTS)
 $(BUILDDIR)/%.o: $(SOURCEDIR)/%.c # -fPIC can be ommitted for run, but is needed for shared, .so files
 	$(CC) -I$(HEADERDIR) -c $< -o $@ $(CFLAGS) -fPIC
 
-$(BUILDDIR)/%.so: $(BUILDDIR)/%.o
-	$(CC) -shared -fPIC -o $@ $<
+$(SHARED_LIBRARY): $(OBJECTS)
+	$(CC) -shared -o $@ $^
 
 clean:
 	find $(BUILDDIR) -type f -not -name '.gitignore' -delete -print
@@ -30,4 +30,4 @@ clean:
 run: all
 	$(EXECUTABLE)
 
-shared: $(SHARED_LIBRARIES)
+shared: $(SHARED_LIBRARY)

@@ -34,6 +34,9 @@ void turnOn(SBA* a, uint bitIndex);
 // if the bit is already off, there is no effect
 void turnOff(SBA* a, uint bitIndex);
 
+// returns bool state of bit at index
+uint8_t getBit(SBA* a, uint bitIndex);
+
 // turns bits in a to off that are also contained in rm
 void turnOffAll(SBA* a, SBA* rm);
 
@@ -49,7 +52,7 @@ void andBits(SBA* r, SBA* a, SBA* b);
 // returns the number of bits on in a AND b
 uint andSize(SBA* a, SBA* b);
 
-// allocates a SBA with sufficient capacity to be used as the result in the OR op.
+// allocates a SBA with sufficient capacity to be used as the result in the OR or XOR op.
 // the allocated SBA has an uninitalized size, since this is set in the OR op
 // this is based on the argument SBAs' CURRENT SIZES, and not their capacities
 SBA* allocSBA_or(SBA*, SBA*);
@@ -57,13 +60,17 @@ SBA* allocSBA_or(SBA*, SBA*);
 // ORs a and b, and places the result in r
 // r->capacity >= a->size + b->size. 
 // Unlike the AND op, r can't be a or b.
-void orBits(SBA* r, SBA* a, SBA* b);
+// if exclusive is nonzero, XOR is used instead
+void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive);
 
-// returns the number of bits on in a OR b
-uint orSize(SBA* a, SBA* b);
+// returns the number of bits on in a OR b. if exclusive is nonzero, XOR is used instead
+uint orSize(SBA* a, SBA* b, uint8_t exclusive);
 
 // increases a by bitshifting n places
-void shift(SBA* a, uint n);
+void rshift(SBA* a, uint n);
+
+// decreases a by bitshifting n places
+void lshift(SBA* a, uint n);
 
 // returns 1 if they are equal, and 0 if they are not equal
 uint8_t equal(SBA* a, SBA* b);
