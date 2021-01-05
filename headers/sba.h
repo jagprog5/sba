@@ -84,22 +84,8 @@ SBA* allocSBA_cp(SBA* src);
 void cp(SBA* dest, SBA* src);
 
 // randomly flips bits off
-// amount is the # of bits that will remain on
-// there is a small preference for bits closer to the end of the array to be left on.
-SBA* subsample(SBA* a, uint amount);
-
-// randomly flips bits off
-// 1 / (2^n) chance of each bit remaining on. n is a power of 2, and must be <= logs(RAND_MAX + 1)
-// a's size in memory is left unchanged
-void subsample2(SBA* a, uint n);
-
-// randomly flips bits off
-// 1 / n chance of each bit remaining on
-// a's size in memory is left unchanged
-void subsample3(SBA* a, uint n);
-
-// returns a subsample of a, with a rate of retaining each bit
-SBA* subsample4(SBA* a, float rate);
+// amount in range [0, 1], where 0 clears the list
+void subsample(SBA* a, float amount);
 
 // input in [0,1], the value to encode
 // n is the number of total bits in the SBA. n >= r->size

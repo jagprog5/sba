@@ -383,72 +383,18 @@ void cp(SBA* dest, SBA* src) {
     memcpy(dest->indices, src->indices, sizeof(uint) * dest->size);
 }
 
-SBA* subsample(SBA* a, uint amount) {
-    SBA* s = allocSBA(amount);
-    uint chunk_index = 0;
-    uint chunk_size = a->size / amount;
-    uint chunk_size_remainder = a->size % amount;
-    uint this_chunk_size;
-
-    loop:
-    this_chunk_size = chunk_size + (chunk_size_remainder-- > 0);
-    // TODO better rand implementation. Reuse different bits before next rand()?
-    // TODO better chunk placement. Smaller chunks are currently all at the end.
-    s->indices[s->size++] = a->indices[chunk_index + rand() % this_chunk_size];
-    chunk_index += this_chunk_size;
-    if (chunk_index >= a->size) {
-        return s;
-    }
-    goto loop;
-}
-
-void subsample2(SBA* a, uint n) {
-    static uint num_bits = sizeof(int) * 8 - __builtin_clz(RAND_MAX);
-    uint bits_taken = num_bits;
-    uint and_mask = ((uint)1 << n) - 1;
-    uint to_offset = 0;
-    uint from_offset = 0;
-    uint r;
-    while (from_offset < a->size) {
-        bits_taken += n;
-        if (bits_taken > num_bits) {
-            bits_taken = 0;
-            r = rand();
-        }
-        if ((r & and_mask) != 0) {
-            ++from_offset;
-        } else {
-            a->indices[to_offset++] = a->indices[from_offset++];
-        }
-        r >>= n;
-    }
-    a->size = to_offset;
-}
-
-void subsample3(SBA* a, uint n) {
+void subsample(SBA* a, float amount) {
+    uint check_val = (uint)(amount * RAND_MAX);
     uint to_offset = 0;
     uint from_offset = 0;
     while (from_offset < a->size) {
-        if (rand() % n != 0) {
+        if (rand() > check_val) {
             ++from_offset;
         } else {
             a->indices[to_offset++] = a->indices[from_offset++];
         }
     }
     a->size = to_offset;
-}
-
-SBA* subsample4(SBA* a, float rate) {
-    uint a_size = a->size;
-    SBA* s = _allocSBA_nosetsize(a_size);
-    uint s_size = 0;
-    for (uint i = 0; i < a_size; ++i) {
-        if ((float)rand() / RAND_MAX < rate) {
-            s->indices[s_size++] = a->indices[i];
-        }
-    }
-    s->size = s_size;
-    return s;
 }
 
 void encodeLinear(float input, uint n, SBA* r) {

@@ -105,11 +105,10 @@ class SBA(ctypes.Structure):
             SBA.f_cp.argtype = [ctypes.POINTER(SBA)] * 2
 
             # subsample
-            seed_rand = SBA.ml_lib.seed_rand
-            seed_rand()
-            SBA.f_subsample = SBA.ml_lib.subsample3
+            SBA.ml_lib.seed_rand()
+            SBA.f_subsample = SBA.ml_lib.subsample3b
             SBA.f_subsample.restype = None
-            SBA.f_subsample.argtype = [ctypes.POINTER(SBA), ctypes.c_uint64]
+            SBA.f_subsample.argtype = [ctypes.POINTER(SBA), ctypes.c_float]
 
             # encodeLinear
             SBA.encodeLinear = SBA.ml_lib.encodeLinear
@@ -192,8 +191,16 @@ class SBA(ctypes.Structure):
             return SBA.and_bits(self, other)
         elif isinstance(other, int):
             return self.get_bit(other)
+        elif isinstance(other, float):
+            return self.cp().subsample(other)
         else:
             raise TypeError(str(type(other)) + " not supported for * or & ops.")
+    
+    def __rmul__(self, other):
+        if isinstance(other, float):
+            return self.cp().subsample(other)
+        else:
+            raise TypeError(str(type(other)) + " not supported for reverse * op.")
     
     def __or__(self, other):
         if isinstance(other, SBA):
@@ -349,7 +356,7 @@ class SBA(ctypes.Structure):
         SBA.orBits(ctypes.pointer(r), ctypes.pointer(a), ctypes.pointer(b), ctypes.c_uint8(1))
         return r
     
-    def xor_sizes(a: SBA, b: SBA) -> iny:
+    def xor_size(a: SBA, b: SBA) -> iny:
         ''' Returns the number of bits in a XOR b. '''
         return SBA.orSize(ctypes.pointer(a), ctypes.pointer(b), ctypes.c_uint8(1))
     
@@ -370,9 +377,11 @@ class SBA(ctypes.Structure):
         SBA.f_cp(ctypes.pointer(r), ctypes.pointer(self))
         return r
 
-    def subsample(self, n: int) -> SBA:
-        ''' Randomly flips bits off. There is a 1 / n chance of each bit remaining on. '''
-        SBA.f_subsample(ctypes.pointer(self), ctypes.c_uint64(n))
+    def subsample(self, retain_amount: float) -> SBA:
+        ''' Randomly flips bits off.'''
+        if retain_amount < 0 or retain_amount > 1:
+            raise SBAException("retain_amount must be in range [0, 1]")
+        SBA.f_subsample(ctypes.pointer(self), ctypes.c_float(retain_amount))
         return self
     
     def encode_linear(input: float, num_on_bits: int, size: int) -> SBA:
@@ -403,7 +412,6 @@ class SBA(ctypes.Structure):
 
 if __name__ == "__main__":
     a = SBA(1, 2, 8, 9)
-    print(a)
     a[-2] = 10
     print(a)
     print(a - 2)
