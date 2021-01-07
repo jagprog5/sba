@@ -378,7 +378,7 @@ class SBA(ctypes.Structure):
         return r
 
     def subsample(self, retain_amount: float) -> SBA:
-        ''' Randomly flips bits off.'''
+        ''' Randomly flips bits off. 0 clears the list, and 1 leaves the list unchanged. '''
         if retain_amount < 0 or retain_amount > 1:
             raise SBAException("retain_amount must be in range [0, 1]")
         SBA.f_subsample(ctypes.pointer(self), ctypes.c_float(retain_amount))

@@ -3,24 +3,22 @@
 
 #include "sba.h"
 
-typedef struct SBAMapperOutput {
-    // each output is connected to a random subsample of the inputs,
-    // and each connection has a strength
-    uint numConnections;
-    uint* inputBits;
-    uint8_t* strengths;
-} SBAMapperOutput;
+#define M_SENTINEL_VAL UINT32_MAX
+
+typedef struct SBAConnection {
+    uint32_t inputBit;
+    uint8_t strength;
+} SBAConnection;
 
 // maps inputs to outputs such that:
-// - only X% of the output bits will be ON for any inputs
-// - similar inputs produce similar outputs
-// - disimilar inputs produce disimilar outputs
+// - only n of the output bits will be ON for any inputs
+// - in the long term, similar inputs produce similar outputs
+// - in the long term, disimilar inputs produce disimilar outputs
 typedef struct SBAMapper {
-    uint numOutputs;
-    SBAMapperOutput* outputs;
-    uint numActiveOutputs;
+    uint32_t numActiveOutputs;
+    uint32_t numOutputs;
     uint8_t connectionStrengthThreshold;
-    uint8_t connectionStrengthDelta;
+    SBAConnection *connections[];
 } SBAMapper;
 
 // returns a randomly initalized SBAMapper
@@ -28,12 +26,11 @@ typedef struct SBAMapper {
 // numActiveOutputs is the number of outputs that will be 1 in the doMapper function
 // connectionStrengthThreshold is the threshold that a connection's strength must exceed to be effective in influencing the output
 // connectionStrengthDelta should be a small value like 1 or 2
-SBAMapper* allocSBAMapper(uint numInputs,
-    uint numOutputs,
+SBAMapper* allocSBAMapper(uint32_t numInputs,
+    uint32_t numOutputs,
     float connectionLikelihood,
-    uint numActiveOutputs,
-    uint8_t connectionStrengthThreshold,
-    uint8_t connectionStrengthDelta);
+    uint32_t numActiveOutputs,
+    uint8_t connectionStrengthThreshold);
 
 void freeSBAMapper(SBAMapper*);
 
@@ -43,6 +40,6 @@ void printSBAMapper(SBAMapper*);
 // the allocated SBA has an uninitalized size, since this is set in the function
 SBA* allocSBA_doMapper(SBAMapper* m);
 
-void doMapper(SBA* output, SBAMapper* m, SBA* input, uint8_t doTraining);
+void doMapper(SBA* output, SBAMapper* m, SBA* input, uint8_t connectionStrengthDelta);
 
 #endif

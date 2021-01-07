@@ -6,50 +6,46 @@
 #include <stdio.h>
 #include <math.h>
 
-SBA* _allocSBA_nosetsize(uint initialCap) {
-    SBA* a = malloc(sizeof(*a));
-    a->indices = malloc(sizeof(*a->indices) * initialCap);
+SBA* _allocSBA_nosetsize(uint32_t initialCap) {
+    SBA* a = malloc(sizeof(*a) + sizeof(a->indices[0]) * initialCap);
     a->capacity = initialCap;
     return a;
 }
 
-SBA* allocSBA(uint initialCap) {
+SBA* allocSBA(uint32_t initialCap) {
     SBA* a = _allocSBA_nosetsize(initialCap);
     a->size = 0;
     return a;
 }
 
-void shortenSBA(SBA* a) {
-    a->capacity = a->size > 0 ? a->size : 1;
-    a->indices = realloc(a->indices, sizeof(uint) * a->capacity);
-}
-
-void freeSBA(SBA* a) {
-    free(a->indices);
-    free(a);
+void shortenSBA(SBA** a) {
+    SBA* b = *a;
+    b->capacity = b->size;
+    *a = realloc(b, sizeof(*b) + sizeof(b->indices[0]) * b->size);
 }
 
 void printSBA(SBA* a) {
     if (a->size != 0) {
-        for (int i = 0; i < a->size - 1; ++i) {
+        for (uint_fast32_t i = 0; i < a->size - 1; ++i) {
             printf("  ");
         }
         puts("V");
     }
-    for (int i = 0; i < a->capacity; ++i) {
-        printf("%d ", (int)a->indices[i]);
+    for (uint_fast32_t i = 0; i < a->capacity; ++i) {
+        printf("%d ", a->indices[i]);
     }
     putchar('\n');
 }
 
-void turnOn(SBA* a, uint bitIndex) {
-    int64_t left = 0;
-    int64_t right = a->size - 1;
-    int64_t middle = 0;
-    uint mid_val = UINT64_MAX;
+void turnOn(SBA** a, uint32_t bitIndex) {
+    SBA* b = *a;
+    int_fast32_t left = 0;
+    int_fast32_t right = (int_fast32_t)b->size - 1;
+    int_fast32_t middle = 0;
+    uint_fast32_t mid_val = UINT_FAST32_MAX;
     while (left <= right) {
         middle = (right + left) / 2;
-        mid_val = a->indices[middle];
+        mid_val = b->indices[middle];
         if (mid_val < bitIndex) {
             left = middle + 1;
         } else if (mid_val > bitIndex) {
@@ -61,25 +57,29 @@ void turnOn(SBA* a, uint bitIndex) {
     if (bitIndex > mid_val) {
         middle += 1;
     }
-    if (a->size >= a->capacity) {
-        a->capacity <<= 1;
-        a->indices = realloc(a->indices, sizeof(uint) * a->capacity);
+    if (b->size >= b->capacity) {
+        b->capacity = b->capacity + (b->capacity >> 1) + 1; // cap *= 1.5 + 1, estimate for golden ratio
+        b = *a = realloc(b, sizeof(*b) + sizeof(b->indices[0]) * b->capacity);
     }
-    memmove(a->indices + middle + 1, a->indices + middle, sizeof(uint) * (a->size - middle));
-    a->size += 1;
-    a->indices[middle] = bitIndex;
+    memmove(b->indices + middle + 1, b->indices + middle, sizeof(b->indices[0]) * (b->size - middle));
+    b->size += 1;
+    b->indices[middle] = bitIndex;
 }
 
-void turnOff(SBA* a, uint bitIndex) {
-    int64_t right = a->size - 1;
-    int64_t left = 0;
-    int64_t middle;
+void turnOff(SBA** a, uint32_t bitIndex) {
+    SBA* b = *a;
+    int_fast32_t left = 0;
+    int_fast32_t right = (int_fast32_t)b->size - 1;
+    int_fast32_t middle;
     while (left <= right) {
         middle = (right + left) / 2;
-        uint mid_val = a->indices[middle];
+        uint_fast32_t mid_val = b->indices[middle];
         if (mid_val == bitIndex) {
-            a->size -= 1;
-            memmove(a->indices + middle, a->indices + middle + 1, sizeof(uint) * (a->size - middle));
+            b->size -= 1;
+            memmove(b->indices + middle, b->indices + middle + 1, sizeof(uint32_t) * (b->size - middle));
+            if (b->size < b->capacity >> 1) {
+                shortenSBA(a);
+            }
             return;
         } else if (mid_val < bitIndex) {
             left = middle + 1;
@@ -89,13 +89,13 @@ void turnOff(SBA* a, uint bitIndex) {
     }
 }
 
-uint8_t getBit(SBA* a, uint bitIndex) {
-    int64_t right = a->size - 1;
-    int64_t left = 0;
-    int64_t middle;
+uint8_t getBit(SBA* a, uint32_t bitIndex) {
+    int_fast32_t left = 0;
+    int_fast32_t right = (int_fast32_t)a->size - 1;
+    int_fast32_t middle;
     while (left <= right) {
         middle = (right + left) / 2;
-        uint mid_val = a->indices[middle];
+        uint_fast32_t mid_val = a->indices[middle];
         if (mid_val == bitIndex) {
             return 1;
         } else if (mid_val < bitIndex) {
@@ -108,13 +108,13 @@ uint8_t getBit(SBA* a, uint bitIndex) {
 }
 
 void turnOffAll(SBA* a, SBA* rm) {
-    uint a_size = a->size;
-    uint rm_size = rm->size;
-    uint a_from = 0;
-    uint a_to = 0;
-    uint a_val;
-    uint rm_offset = 0;
-    uint rm_val;
+    uint_fast32_t a_size = a->size;
+    uint_fast32_t rm_size = rm->size;
+    uint_fast32_t a_from = 0;
+    uint_fast32_t a_to = 0;
+    uint_fast32_t a_val;
+    uint_fast32_t rm_offset = 0;
+    uint_fast32_t rm_val;
     while (a_from < a_size) {
         if (rm_offset < rm_size) {
             a_val = a->indices[a_from];
@@ -138,13 +138,13 @@ SBA* allocSBA_andBits(SBA* a, SBA* b) {
 }
 
 void andBits(SBA* r, SBA* a, SBA* b) {
-    uint a_offset = 0;
-    uint a_val;
-    uint a_size = a->size; // store in case r = a
-    uint b_offset = 0;
-    uint b_val;
-    uint b_size = b->size; // store in case r = b
-    uint r_size = 0;
+    uint_fast32_t a_offset = 0;
+    uint_fast32_t a_val;
+    uint_fast32_t a_size = a->size; // store in case r = a
+    uint_fast32_t b_offset = 0;
+    uint_fast32_t b_val;
+    uint_fast32_t b_size = b->size; // store in case r = b
+    uint_fast32_t r_size = 0;
     get_both:
     if (a_offset >= a_size) {
         goto end;
@@ -178,14 +178,14 @@ void andBits(SBA* r, SBA* a, SBA* b) {
     r->size = r_size;
 }
 
-uint andSize(SBA* a, SBA* b) {
-    uint size = 0;
-    uint a_offset = 0;
-    uint a_val;
-    uint a_size = a->size;
-    uint b_offset = 0;
-    uint b_val;
-    uint b_size = b->size;
+uint32_t andSize(SBA* a, SBA* b) {
+    uint_fast32_t size = 0;
+    uint_fast32_t a_offset = 0;
+    uint_fast32_t a_val;
+    uint_fast32_t a_size = a->size;
+    uint_fast32_t b_offset = 0;
+    uint_fast32_t b_val;
+    uint_fast32_t b_size = b->size;
     get_both:
     if (a_offset >= a_size) {
         return size;
@@ -221,11 +221,11 @@ SBA* allocSBA_or(SBA* a, SBA* b) {
 }
 
 void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
-    uint a_offset = 0;
-    uint a_val;
-    uint b_offset = 0;
-    uint b_val;
-    uint r_size = 0;
+    uint_fast32_t a_offset = 0;
+    uint_fast32_t a_val;
+    uint_fast32_t b_offset = 0;
+    uint_fast32_t b_val;
+    uint_fast32_t r_size = 0;
 
     get_both:
     if (a_offset >= a->size) {
@@ -283,12 +283,12 @@ void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
     r->size = r_size;
 }
 
-uint orSize(SBA* a, SBA* b, uint8_t exclusive) {
-    uint size = 0;
-    uint a_offset = 0;
-    uint a_val;
-    uint b_offset = 0;
-    uint b_val;
+uint32_t orSize(SBA* a, SBA* b, uint8_t exclusive) {
+    uint_fast32_t size = 0;
+    uint_fast32_t a_offset = 0;
+    uint_fast32_t a_val;
+    uint_fast32_t b_offset = 0;
+    uint_fast32_t b_val;
     get_both:
     if (a_offset >= a->size) {
         if (!b) {
@@ -342,23 +342,23 @@ uint orSize(SBA* a, SBA* b, uint8_t exclusive) {
     goto loop;
 }
 
-void rshift(SBA* a, uint n) {
-    for (uint i = 0; i < a->size; ++i) {
+void rshift(SBA* a, uint32_t n) {
+    for (uint_fast32_t i = 0; i < a->size; ++i) {
         a->indices[i] += n;
     }
 }
 
-void lshift(SBA* a, uint n) {
-    uint flow_count = 0;
-    for (uint i = 0; i < a->size; ++i) {
-        uint val = a->indices[i];
+void lshift(SBA* a, uint32_t n) {
+    uint_fast32_t flow_count = 0;
+    for (uint_fast32_t i = 0; i < a->size; ++i) {
+        uint_fast32_t val = a->indices[i];
         if (val < n) {
             flow_count += 1;
             continue;
         }
         a->indices[i] = val - n;
     }
-    memmove(a->indices, a->indices + flow_count, sizeof(uint) * (a->size - flow_count));
+    memmove(a->indices, a->indices + flow_count, sizeof(uint32_t) * (a->size - flow_count));
     a->size -= flow_count;
 }
 
@@ -366,7 +366,7 @@ uint8_t equal(SBA* a, SBA* b) {
     if (a->size != b->size) {
         return 0;
     }
-    for (uint i = 0; i < a->size; ++i) {
+    for (uint32_t i = 0; i < a->size; ++i) {
         if (a->indices[i] != b->indices[i]) {
             return 0;
         }
@@ -380,13 +380,13 @@ SBA* allocSBA_cp(SBA* a) {
 
 void cp(SBA* dest, SBA* src) {
     dest->size = src->size;
-    memcpy(dest->indices, src->indices, sizeof(uint) * dest->size);
+    memcpy(dest->indices, src->indices, sizeof(uint32_t) * dest->size);
 }
 
 void subsample(SBA* a, float amount) {
-    uint check_val = (uint)(amount * RAND_MAX);
-    uint to_offset = 0;
-    uint from_offset = 0;
+    unsigned int check_val = amount * RAND_MAX;
+    uint_fast32_t to_offset = 0;
+    uint_fast32_t from_offset = 0;
     while (from_offset < a->size) {
         if (rand() > check_val) {
             ++from_offset;
@@ -397,21 +397,21 @@ void subsample(SBA* a, float amount) {
     a->size = to_offset;
 }
 
-void encodeLinear(float input, uint n, SBA* r) {
-    uint width = r->size;
-    uint start_offset = ceil((n - width) * input);
+void encodeLinear(float input, uint32_t n, SBA* r) {
+    uint_fast32_t width = r->size;
+    uint_fast32_t start_offset = ceil((n - width) * input);
     for (; width > 0; --width) {
         r->indices[width - 1] = start_offset + width - 1;
     }
 }
 
-void encodePeriodic(float input, float period, uint n, SBA* r) {
+void encodePeriodic(float input, float period, uint32_t n, SBA* r) {
     float remainder = fmod(input, period);
-    uint start_offset = ceil(remainder / period * n);
-    int32_t num_wrapped = (int32_t)(start_offset + r->size) - (int32_t)n;
-    uint num_remaining;
+    uint_fast32_t start_offset = ceil(remainder / period * n);
+    int_fast32_t num_wrapped = (int_fast32_t)(start_offset + r->size) - (int_fast32_t)n;
+    uint_fast32_t num_remaining;
     if (num_wrapped > 0) {
-        for (uint i = 0; i < num_wrapped; ++i) {
+        for (uint_fast32_t i = 0; i < num_wrapped; ++i) {
             r->indices[i] = i;
         }
         num_remaining = r->size - num_wrapped;
@@ -419,7 +419,7 @@ void encodePeriodic(float input, float period, uint n, SBA* r) {
         num_remaining = r->size;
         num_wrapped = 0;
     }
-    for (uint i = 0; i < num_remaining; ++i) {
+    for (uint_fast32_t i = 0; i < num_remaining; ++i) {
         r->indices[i + num_wrapped] = start_offset + i;
     }
 }

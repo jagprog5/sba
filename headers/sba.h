@@ -3,39 +3,38 @@
 
 #include <stdint.h>
 
-typedef uint64_t uint;
-
 // sparse bit array. sorted arraylist implementation
 typedef struct SBA {
-    uint* indices; // contains indices of bits that are ON
-    uint size; // number of ON bits in the array
-    uint capacity; // mem currently allocated for the list
+    uint32_t size; // number of ON bits in the array
+    uint32_t capacity; // mem currently allocated for the list
+    uint32_t indices[]; // contains indices of bits that are ON
 } SBA;
 
 // leaves size uninitialized
-SBA* _allocSBA_nosetsize(uint initialCap);
+SBA* _allocSBA_nosetsize(uint32_t initialCap);
 
-// initial_cap must be > 0
 // returns an empty SBA
-SBA* allocSBA(uint initialCap);
+SBA* allocSBA(uint32_t initialCap);
 
 void freeSBA(SBA*);
 
 void printSBA(SBA*);
 
 // reduces the capacity and memory allocated to a, to match its size
-void shortenSBA(SBA* a);
+void shortenSBA(SBA** a);
 
 // flips bit in array at index to ON
 // if the bit is already on, there is no effect (skips duplicate)
-void turnOn(SBA* a, uint bitIndex);
+// reallocs if sufficiently large
+void turnOn(SBA** a, uint32_t bitIndex);
 
 // flips bit in array at index to OFF
 // if the bit is already off, there is no effect
-void turnOff(SBA* a, uint bitIndex);
+// reallocs if sufficiently small
+void turnOff(SBA** a, uint32_t bitIndex);
 
 // returns bool state of bit at index
-uint8_t getBit(SBA* a, uint bitIndex);
+uint8_t getBit(SBA* a, uint32_t bitIndex);
 
 // turns bits in a to off that are also contained in rm
 void turnOffAll(SBA* a, SBA* rm);
@@ -50,7 +49,7 @@ SBA* allocSBA_andBits(SBA*, SBA*);
 void andBits(SBA* r, SBA* a, SBA* b);
 
 // returns the number of bits on in a AND b
-uint andSize(SBA* a, SBA* b);
+uint32_t andSize(SBA* a, SBA* b);
 
 // allocates a SBA with sufficient capacity to be used as the result in the OR or XOR op.
 // the allocated SBA has an uninitalized size, since this is set in the OR op
@@ -64,13 +63,13 @@ SBA* allocSBA_or(SBA*, SBA*);
 void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive);
 
 // returns the number of bits on in a OR b. if exclusive is nonzero, XOR is used instead
-uint orSize(SBA* a, SBA* b, uint8_t exclusive);
+uint32_t orSize(SBA* a, SBA* b, uint8_t exclusive);
 
 // increases a by bitshifting n places
-void rshift(SBA* a, uint n);
+void rshift(SBA* a, uint32_t n);
 
 // decreases a by bitshifting n places
-void lshift(SBA* a, uint n);
+void lshift(SBA* a, uint32_t n);
 
 // returns 1 if they are equal, and 0 if they are not equal
 uint8_t equal(SBA* a, SBA* b);
@@ -90,11 +89,11 @@ void subsample(SBA* a, float amount);
 // input in [0,1], the value to encode
 // n is the number of total bits in the SBA. n >= r->size
 // r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
-void encodeLinear(float input, uint n, SBA* r);
+void encodeLinear(float input, uint32_t n, SBA* r);
 
 // input is the the value to encode. it is encoded linearly, except its encoding wraps back to 0 as it approaches period
 // n is the number of total bits in the SBA. n >= r->size
 // r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
-void encodePeriodic(float input, float period, uint n, SBA* r);
+void encodePeriodic(float input, float period, uint32_t n, SBA* r);
 
 #endif
