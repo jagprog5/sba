@@ -26,10 +26,14 @@ void shortenSBA(SBA** a) {
 
 void printSBA(SBA* a) {
     if (a->size != 0) {
+        uint_fast32_t amount = 0;
         for (uint_fast32_t i = 0; i < a->size - 1; ++i) {
-            printf("  ");
+            amount += 2 + log10f(a->indices[i]);
         }
-        puts("V");
+        for (uint_fast32_t j = 0; j < amount; ++j) {
+            putchar(' ');
+        }
+        printf("V\n");
     }
     for (uint_fast32_t i = 0; i < a->capacity; ++i) {
         printf("%d ", a->indices[i]);

@@ -1,13 +1,24 @@
 from __future__ import annotations
-import ctypes
-from typing import List, Iterable, Optional
+import ctypes as c
+from typing import List, Iterable, Union
 import pathlib
 
 class SBAException(Exception):
     pass
 
-class SBAIterator:
-    def __init__(self, sba: SBA):
+def _sba_struct_factory(capacity):
+    # flexible array member, must be done as a local class
+    class SBAStruct(c.Structure):
+        _fields_ = [
+            ('size', c.c_uint32),
+            ('capacity', c.c_uint32),
+            ('indices', c.c_uint32 * capacity)]
+    ret = SBAStruct()
+    ret.capacity = (c.c_uint32)(capacity)
+    return ret
+
+class SBAStructIterator:
+    def __init__(self, sba: SBAStruct):
         self._sba = sba
         self._index = 0
     
@@ -17,8 +28,9 @@ class SBAIterator:
         ret = self._sba.indices[self._index]
         self._index += 1
         return ret
+        
 
-class SBA(ctypes.Structure):
+class SBA():
     '''
     Sparse bit array. This is a wrapper for sba.h
     '''
@@ -27,16 +39,16 @@ class SBA(ctypes.Structure):
     ml_lib = None
 
     _fields_ = [
-        ('indices',ctypes.POINTER(ctypes.c_uint64)),
-        ('size',ctypes.c_uint64),
-        ('capacity',ctypes.c_uint64)]
+        ('size',c.c_uint32),
+        ('capacity',c.c_uint32),
+        ('indices',c.POINTER(c.c_uint32))]
     
     def _init_lib_if_needed():
         if SBA.ml_lib is None:
             lib_folder = pathlib.Path(__file__).absolute().parents[1] / "build"
             ml_lib_file = lib_folder / "ml_lib.so"
             try:
-                SBA.ml_lib = ctypes.CDLL(ml_lib_file)
+                SBA.ml_lib = c.CDLL(ml_lib_file)
             except OSError as e:
                 print(e)
                 raise SBAException("Couldn't load ml_lib.so in build dir. Run `make shared` at repo root")
@@ -44,83 +56,78 @@ class SBA(ctypes.Structure):
             # printSBA
             SBA.printSBA = SBA.ml_lib.printSBA
             SBA.printSBA.restype = None
-            SBA.printSBA.argtype = [ctypes.POINTER(SBA)]
+            SBA.printSBA.argtype = [c.c_void_p]
 
-            # turnOn
-            # requires realloc, manual implementation on Python side in set_bit
-
-            # turnOff
-            SBA.turnOff = SBA.ml_lib.turnOff
-            SBA.turnOff.restype = None
-            SBA.turnOff.argtype = [ctypes.POINTER(SBA), ctypes.c_uint64]
+            # turnOn, turnOff
+            # both require realloc, manually implemented
 
             # getBit
             SBA.getBit = SBA.ml_lib.getBit
-            SBA.getBit.restype = ctypes.c_uint8
-            SBA.getBit.argtype = [ctypes.POINTER(SBA), ctypes.c_uint64]
+            SBA.getBit.restype = c.c_uint8
+            SBA.getBit.argtype = [c.c_void_p, c.c_uint32]
 
             # turnOffAll
             SBA.turnOffAll = SBA.ml_lib.turnOffAll
             SBA.turnOffAll.restype = None
-            SBA.turnOffAll.argtype = [ctypes.POINTER(SBA)] * 2
+            SBA.turnOffAll.argtype = [c.c_void_p] * 2
 
             # andBits
             SBA.andBits = SBA.ml_lib.andBits
             SBA.andBits.restype = None
-            SBA.andBits.argtype = [ctypes.POINTER(SBA)] * 3
+            SBA.andBits.argtype = [c.c_void_p] * 3
 
             # andSize
             SBA.andSize = SBA.ml_lib.andSize
-            SBA.andSize.restype = ctypes.c_uint64
-            SBA.andSize.argtype = [ctypes.POINTER(SBA)] * 2
+            SBA.andSize.restype = c.c_uint32
+            SBA.andSize.argtype = [c.c_void_p] * 2
 
             # orBits
             SBA.orBits = SBA.ml_lib.orBits
             SBA.orBits.restype = None
-            SBA.orBits.argtype = [ctypes.POINTER(SBA)] * 3 + [ctypes.c_uint8]
+            SBA.orBits.argtype = [c.c_void_p] * 3 + [c.c_uint8]
 
             # orSize
             SBA.orSize = SBA.ml_lib.orSize
-            SBA.orSize.restype = ctypes.c_uint64
-            SBA.orSize.argtype = [ctypes.POINTER(SBA)] * 2 + [ctypes.c_uint8]
+            SBA.orSize.restype = c.c_uint32
+            SBA.orSize.argtype = [c.c_void_p] * 2 + [c.c_uint8]
 
             # rshift
             SBA.rshift = SBA.ml_lib.rshift
             SBA.rshift.restype = None
-            SBA.rshift.argtype = [ctypes.POINTER(SBA), ctypes.c_uint64]
+            SBA.rshift.argtype = [c.c_void_p, c.c_uint32]
 
             # lshift
             SBA.lshift = SBA.ml_lib.lshift
             SBA.lshift.restype = None
-            SBA.lshift.argtype = [ctypes.POINTER(SBA), ctypes.c_uint64]
+            SBA.lshift.argtype = [c.c_void_p, c.c_uint32]
 
             # equality
             SBA.equal = SBA.ml_lib.equal
-            SBA.equal.restype = ctypes.c_uint8
-            SBA.equal.argtype = [ctypes.POINTER(SBA)] * 2
+            SBA.equal.restype = c.c_uint8
+            SBA.equal.argtype = [c.c_void_p] * 2
 
             # cp
             SBA.f_cp = SBA.ml_lib.cp
             SBA.f_cp.restype = None
-            SBA.f_cp.argtype = [ctypes.POINTER(SBA)] * 2
+            SBA.f_cp.argtype = [c.c_void_p] * 2
 
             # subsample
             SBA.ml_lib.seed_rand()
-            SBA.f_subsample = SBA.ml_lib.subsample3b
+            SBA.f_subsample = SBA.ml_lib.subsample
             SBA.f_subsample.restype = None
-            SBA.f_subsample.argtype = [ctypes.POINTER(SBA), ctypes.c_float]
+            SBA.f_subsample.argtype = [c.c_void_p, c.c_float]
 
             # encodeLinear
             SBA.encodeLinear = SBA.ml_lib.encodeLinear
             SBA.encodeLinear.restype = None
-            SBA.encodeLinear.argtype = [ctypes.c_float, ctypes.c_uint64, ctypes.POINTER(SBA)]
+            SBA.encodeLinear.argtype = [c.c_float, c.c_uint32, c.c_void_p]
 
             # encodePeriodic
             SBA.encodePeriodic = SBA.ml_lib.encodePeriodic
             SBA.encodePeriodic.restype = None
-            SBA.encodePeriodic.argtype = [ctypes.c_float, ctypes.c_float, ctypes.c_uint64, ctypes.POINTER(SBA)]
+            SBA.encodePeriodic.argtype = [c.c_float, c.c_float, c.c_uint32, c.c_void_p]
     
-    def __init__(self, *on_bits: Iterable[int], **_special):
+    def __init__(self, *on_bits: Union[int, Iterable[int], SBA], **_special):
         SBA._init_lib_if_needed()
         if not 'blank_size' in _special:
             if hasattr(on_bits[0], "__getitem__"): # support list, tuple, etc as first arg
@@ -133,14 +140,11 @@ class SBA(ctypes.Structure):
                     raise SBAException("on_bits must be in ascending order.")
                 if not all(on_bits[i] >= 0 for i in range(ln)):
                     raise SBAException("on_bits must only contain non-negative integers.")
-            self.indices = (ctypes.c_uint64 * ln)(*on_bits)
-            self.size = (ctypes.c_uint64)(ln)
-            self.capacity = (ctypes.c_uint64)(ln)
+            self.struct = _sba_struct_factory(ln)
+            self.struct.indices = (c.c_uint32 * ln)(*on_bits)
+            self.struct.size = self.struct.capacity
         else:
-            ln = _special['blank_size']
-            self.indices = (ctypes.c_uint64 * ln)()
-            self.size = (ctypes.c_uint64)(ln)
-            self.capacity = (ctypes.c_uint64)(ln)
+            self.struct = _sba_struct_factory(_special['blank_size'])
     
     def enable_checking():
         '''This is enabled by default. On creation of a SBA, ensures that on_bits are valid. '''
@@ -151,25 +155,33 @@ class SBA(ctypes.Structure):
         SBA.do_checking = False
     
     def to_list(self) -> List[int]:
-        return [self.indices[i] for i in range(self.size)]
+        return [self.struct.indices[i] for i in range(self.struct.size)]
     
     def __str__(self):
         return str(self.to_list())
     
     def __bool__(self):
-        return self.size > 0
+        return self.struct.size > 0
 
     def __iter__(self):
         ''' Gives indices of ON bits. '''
-        return SBAIterator(self)
+        return SBAStructIterator(self.struct)
     
     def __len__(self):
         ''' Returns the number of bits that are ON. '''
-        return self.size
+        return self.struct.size
     
     def __add__(self, other):
         if isinstance(other, str):
             return str(self) + other
+        elif hasattr(other, "__getitem__"):
+            cp = self.cp()
+            for i in other:
+                if isinstance(i, int):
+                    cp.set_bit(i, True)
+                else:
+                    raise TypeError("for + op, all elements in a list must be integers")
+            return cp
         elif isinstance(other, int):
             return self.cp().set_bit(other, True) # Return modified copy. Do not modify self
         elif isinstance(other, SBA):
@@ -216,7 +228,15 @@ class SBA(ctypes.Structure):
     
     def __sub__(self, other):
         if isinstance(other, int):
-            return self.cp().set_bit(other, False) # Return modified copy. Do not modify self
+            return self.cp().set_bit(other, False)
+        elif hasattr(other, "__getitem__"):
+            cp = self.cp()
+            for i in other:
+                if isinstance(i, int):
+                    cp.set_bit(i, False)
+                else:
+                    raise TypeError("for - op, all elements in a list must be integers")
+            return cp
         elif isinstance(other, SBA):
             return self.cp().turn_off_all(other)
         else:
@@ -232,10 +252,10 @@ class SBA(ctypes.Structure):
             raise TypeError(str(type(other)) + " not supported for >> or << ops.")
     
     def _check_index(self, index: int) -> int:
-        if index >= self.size:
+        if index >= self.struct.size:
             raise SBAException("Index out of bounds.")
         if index < 0:
-            index = self.size + index
+            index = self.struct.size + index
             if index < 0:
                 raise SBAException("Index out of bounds.")
         return index
@@ -245,7 +265,7 @@ class SBA(ctypes.Structure):
         Returns the index of the i-th ON bit.
         Not to be confused with get_bit
         '''
-        return self.indices[self._check_index(index)]
+        return self.struct.indices[self._check_index(index)]
     
     
     def get_bit(self, index: int) -> bool:
@@ -253,15 +273,15 @@ class SBA(ctypes.Structure):
         Returns the value of the i-th bit.
         '''
         if index < 0:
-            raise SBAException("Requires positive index.")
-        return bool(SBA.getBit(ctypes.pointer(self), ctypes.c_uint64(index)))
+            raise SBAException("Requires non-negative index.")
+        return bool(SBA.getBit(c.byref(self.struct), c.c_uint32(index)))
     
     def __setitem__(self, index: int, value: int):
         '''
         Turns off the index-th ON bit, and turns on the value-th bit.
         Not to be confused with set_bit
         '''
-        self.set_bit(self.indices[self._check_index(index)], False)
+        self.__delitem__(index)
         self.set_bit(value, True)
     
     def set_bit(self, index: int, value: bool):
@@ -269,119 +289,134 @@ class SBA(ctypes.Structure):
         Sets the value of the i-th bit
         '''
         if index < 0:
-            raise SBAException("Requires positive index.")
-        if value:
-            # can't call turnOn in c code since realloc must be done here
-            left = 0
-            right = self.size - 1
-            middle = 0
-            mid_val = 0
-            while left <= right:
-                middle = (right + left) // 2
-                mid_val = self.indices[middle]
-                if mid_val < index:
-                    left = middle + 1
-                elif mid_val > index:
-                    right = middle - 1
-                else:
-                    return # skip duplicate
-            if index > mid_val:
-                middle += 1
-            type_size = ctypes.sizeof(ctypes.c_uint64)
-            if self.size >= self.capacity:
-                self.capacity <<= 1
-                new_indices = (ctypes.c_uint64 * self.capacity)()
-                ctypes.memmove(new_indices, self.indices, type_size * self.size)
-                self.indices = new_indices
-            addr = ctypes.cast(self.indices, ctypes.c_void_p).value
-            from_addr = addr + middle * type_size
-            to_addr = from_addr + type_size
-            ctypes.memmove(to_addr, from_addr, type_size * (self.size - middle))
-            self.size += 1
-            self.indices[middle] = index
-        else:
-            SBA.turnOff(ctypes.pointer(self), ctypes.c_uint64(index))
+            raise SBAException("Requires non-negative index.")
+        left = 0
+        right = self.struct.size - 1
+        middle = 0
+        mid_val = 0xFFFFFFFF # u32 max
+        while left <= right:
+            middle = (right + left) // 2
+            mid_val = self.struct.indices[middle]
+            if mid_val < index:
+                left = middle + 1
+            elif mid_val > index:
+                right = middle - 1
+            else:
+                if not value:
+                    self.__delitem__(middle)
+                return self # skip duplicate
+        if not value:
+            return self
+        if index > mid_val:
+            middle += 1
+        self._lengthen_if_needed()
+        ptr = c.cast(c.pointer(self.struct.indices), c.c_void_p)
+        addr = ptr.value
+        type_size = c.sizeof(c.c_uint32)
+        from_addr = addr + middle * type_size
+        to_addr = from_addr + type_size
+        c.memmove(to_addr, from_addr, type_size * (self.struct.size - middle))
+        self.struct.size += 1
+        self.struct.indices[middle] = index
         return self
         
     def __delitem__(self, index: int):
         ''' Turns the i-th ON bit to OFF '''
         index = self._check_index(index)
-        self.size -= 1
-        addr = ctypes.cast(self.indices, ctypes.c_void_p).value # disgusting
-        type_size = ctypes.sizeof(ctypes.c_uint64)
+        self.struct.size -= 1
+        ptr = c.cast(c.pointer(self.struct.indices), c.c_void_p)
+        addr = ptr.value
+        type_size = c.sizeof(c.c_uint32)
         to_addr = addr + index * type_size
         from_addr = to_addr + type_size
-        ctypes.memmove(to_addr, from_addr, type_size * (self.size - index))
+        c.memmove(to_addr, from_addr, type_size * (self.struct.size - index))
+        self._shorten_if_needed()
+        return self
     
+    def _lengthen_if_needed(self):
+        if self.struct.size >= self.struct.capacity:
+            new_cap = 1 + self.struct.capacity + self.struct.capacity // 2
+            new_struct = _sba_struct_factory(new_cap)
+            new_struct.size = self.struct.size
+            c.memmove(new_struct.indices, self.struct.indices, c.sizeof(c.c_uint32) * new_struct.capacity)
+            self.struct = new_struct
+
+    
+    def _shorten_if_needed(self):
+        if self.struct.size < self.struct.capacity // 2:
+            self.shorten()
+
     def shorten(self):
         ''' Reduces the allocated memory to match the size. '''
-        self.capacity = self.size
-        new_indices = (ctypes.c_uint64 * self.capacity)()
-        ctypes.memmove(new_indices, self.indices, ctypes.sizeof(ctypes.c_uint64) * self.capacity)
-        self.indices = new_indices
+        new_struct = _sba_struct_factory(self.struct.size)
+        new_struct.size = new_struct.capacity
+        c.memmove(new_struct.indices, self.struct.indices, c.sizeof(c.c_uint32) * new_struct.capacity)
+        self.struct = new_struct
         return self
     
     def print_SBA(self):
         ''' 
         Not to be confused with a normal print. 
-        This prints out the raw contiguous uints allocated to the SBA, and indicates where the used mem ends.
+        This prints out the raw contiguous ints allocated to the SBA, and indicates where the used mem ends.
         '''
-        SBA.printSBA(ctypes.pointer(self))
+        SBA.printSBA(c.byref(self.struct))
     
     def turn_off_all(self, rm: SBA):
         ''' Turns off all bits also contained in rm. '''
-        SBA.turnOffAll(ctypes.pointer(self), ctypes.pointer(rm))
+        SBA.turnOffAll(c.byref(self.struct), c.byref(rm.struct))
         return self
     
     def and_bits(a: SBA, b: SBA) -> SBA:
-        r = SBA(blank_size = min(a.size, b.size))
-        SBA.andBits(ctypes.pointer(r), ctypes.pointer(a), ctypes.pointer(b))
+        r = SBA(blank_size = min(a.struct.size, b.struct.size))
+        SBA.andBits(c.byref(r.struct), c.byref(a.struct), c.byref(b.struct))
         return r
 
     def and_size(a: SBA, b: SBA) -> int:
         ''' Returns the number of bits in a AND in b. '''
-        return SBA.andSize(ctypes.pointer(a), ctypes.pointer(b))
+        return SBA.andSize(c.byref(a.struct), c.byref(b.struct))
 
     def or_bits(a: SBA, b: SBA) -> SBA:
-        r = SBA(blank_size = a.size + b.size)
-        SBA.orBits(ctypes.pointer(r), ctypes.pointer(a), ctypes.pointer(b), ctypes.c_uint8(0))
+        r = SBA(blank_size = a.struct.size + b.struct.size)
+        SBA.orBits(c.byref(r.struct), c.byref(a.struct), c.byref(b.struct), c.c_uint8(0))
         return r
 
     def or_size(a: SBA, b: SBA) -> int:
         ''' Returns the number of bits in a OR b. '''
-        return SBA.orSize(ctypes.pointer(a), ctypes.pointer(b), ctypes.c_uint8(0))
+        return SBA.orSize(c.byref(a.struct), c.byref(b.struct), c.c_uint8(0))
 
     def xor_bits(a: SBA, b: SBA) -> SBA:
-        r = SBA(blank_size = a.size + b.size)
-        SBA.orBits(ctypes.pointer(r), ctypes.pointer(a), ctypes.pointer(b), ctypes.c_uint8(1))
+        r = SBA(blank_size = a.struct.size + b.struct.size)
+        SBA.orBits(c.byref(r.struct), c.byref(a.struct), c.byref(b.struct), c.c_uint8(1))
         return r
     
     def xor_size(a: SBA, b: SBA) -> iny:
         ''' Returns the number of bits in a XOR b. '''
-        return SBA.orSize(ctypes.pointer(a), ctypes.pointer(b), ctypes.c_uint8(1))
+        return SBA.orSize(c.byref(a.struct), c.byref(b.struct), c.c_uint8(1))
     
     def shift(self, n: int):
         ''' Bitshift '''
         if n > 0:
-            SBA.rshift(ctypes.pointer(self), ctypes.c_uint64(n))
+            SBA.rshift(c.byref(self.struct), c.c_uint32(n))
         else:
-            SBA.lshift(ctypes.pointer(self), ctypes.c_uint64(-n))
+            SBA.lshift(c.byref(self.struct), c.c_uint32(-n))
         return self
 
     def __eq__(self, other):
-        return bool(SBA.equal(ctypes.pointer(self), ctypes.pointer(other)))
+        if not isinstance(other, SBA):
+            raise TypeError("== op only defined between SBAs, and not type: " + str(type(other)))
+        return bool(SBA.equal(c.byref(self.struct), c.byref(other.struct)))
     
     def cp(self) -> SBA:
         ''' Returns deep copy of self. '''
-        r = SBA(blank_size = self.size)
-        SBA.f_cp(ctypes.pointer(r), ctypes.pointer(self))
+        r = SBA(blank_size = self.struct.size)
+        SBA.f_cp(c.byref(r.struct), c.byref(self.struct))
         return r
 
     def subsample(self, retain_amount: float) -> SBA:
         ''' Randomly flips bits off. 0 clears the list, and 1 leaves the list unchanged. '''
         if retain_amount < 0 or retain_amount > 1:
-            raise SBAException("retain_amount must be in range [0, 1]")
-        SBA.f_subsample(ctypes.pointer(self), ctypes.c_float(retain_amount))
+            raise SBAException("retain_amount must be in range [0,1]")
+        SBA.f_subsample(c.byref(self.struct), c.c_float(retain_amount))
         return self
     
     def encode_linear(input: float, num_on_bits: int, size: int) -> SBA:
@@ -394,7 +429,7 @@ class SBA(ctypes.Structure):
         if input < 0: # nothing breaks if input is > 1
             raise SBAException("Can't encode a negative value in this function.")
         r = SBA(blank_size = num_on_bits)
-        SBA.encodeLinear(ctypes.c_float(input), ctypes.c_uint64(size), ctypes.pointer(r))
+        SBA.encodeLinear(c.c_float(input), c.c_uint32(size), c.byref(r.struct))
         return r
     
     def encode_periodic(input: float, period: float, num_on_bits: int, size: int) -> SBA:
@@ -407,15 +442,21 @@ class SBA(ctypes.Structure):
         if period <= 0: # nothing breaks if input is > 1
             raise SBAException("Period must be positive.")
         r = SBA(blank_size = num_on_bits)
-        SBA.encodePeriodic(ctypes.c_float(input), ctypes.c_float(period), ctypes.c_uint64(size), ctypes.pointer(r))
+        SBA.encodePeriodic(c.c_float(input), c.c_float(period), c.c_uint32(size), c.byref(r.struct))
         return r
 
 if __name__ == "__main__":
-    a = SBA(1, 2, 8, 9)
-    a[-2] = 10
-    print(a)
-    print(a - 2)
-    b = SBA(a)
-    a.set_bit(2, False)
-    a.set_bit(1000, True)
-    print(a + " & " + b + " = " + a * b)
+    a = SBA(10, 20, 80, 90)
+    a.print_SBA()
+    # b = SBA(2, 8, 9, 10)
+    # r = SBA.xor_bits(a, b)
+    # print(r)
+    # a.set_bit(1, False)
+    # r.shorten().print_SBA()
+    # a[-2] = 10
+    # print(a)
+    # print(a - 2)
+    # b = SBA(a)
+    # a.set_bit(2, False)
+    # a.set_bit(1000, True)
+    # print(a + " & " + b + " = " + a * b)
