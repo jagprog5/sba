@@ -7,7 +7,8 @@
 #include <math.h>
 
 SBA* _allocSBA_nosetsize(uint32_t initialCap) {
-    SBA* a = malloc(sizeof(*a) + sizeof(a->indices[0]) * initialCap);
+    SBA* a = malloc(sizeof(*a));
+    a->indices = malloc(sizeof(*a->indices) * initialCap);
     a->capacity = initialCap;
     return a;
 }
@@ -18,10 +19,14 @@ SBA* allocSBA(uint32_t initialCap) {
     return a;
 }
 
-void shortenSBA(SBA** a) {
-    SBA* b = *a;
-    b->capacity = b->size;
-    *a = realloc(b, sizeof(*b) + sizeof(b->indices[0]) * b->size);
+void freeSBA(SBA* a) {
+    free(a->indices);
+    free(a);
+}
+
+void shortenSBA(SBA* a) {
+    a->capacity = a->size;
+    a->indices = realloc(a->indices, sizeof(*a->indices) * a->capacity);
 }
 
 void printSBA(SBA* a) {
@@ -41,15 +46,14 @@ void printSBA(SBA* a) {
     putchar('\n');
 }
 
-void turnOn(SBA** a, uint32_t bitIndex) {
-    SBA* b = *a;
+void turnOn(SBA* a, uint32_t bitIndex) {
     int_fast32_t left = 0;
-    int_fast32_t right = (int_fast32_t)b->size - 1;
+    int_fast32_t right = (int_fast32_t)a->size - 1;
     int_fast32_t middle = 0;
     uint_fast32_t mid_val = UINT_FAST32_MAX;
     while (left <= right) {
         middle = (right + left) / 2;
-        mid_val = b->indices[middle];
+        mid_val = a->indices[middle];
         if (mid_val < bitIndex) {
             left = middle + 1;
         } else if (mid_val > bitIndex) {
@@ -61,27 +65,26 @@ void turnOn(SBA** a, uint32_t bitIndex) {
     if (bitIndex > mid_val) {
         middle += 1;
     }
-    if (b->size >= b->capacity) {
-        b->capacity = b->capacity + (b->capacity >> 1) + 1; // cap *= 1.5 + 1, estimate for golden ratio
-        b = *a = realloc(b, sizeof(*b) + sizeof(b->indices[0]) * b->capacity);
+    if (a->size >= a->capacity) {
+        a->capacity = a->capacity + (a->capacity >> 1) + 1; // cap *= 1.5 + 1, estimate for golden ratio
+        a->indices = realloc(a->indices, sizeof(*a->indices) * a->capacity);
     }
-    memmove(b->indices + middle + 1, b->indices + middle, sizeof(b->indices[0]) * (b->size - middle));
-    b->size += 1;
-    b->indices[middle] = bitIndex;
+    memmove(a->indices + middle + 1, a->indices + middle, sizeof(*a->indices) * (a->size - middle));
+    a->size += 1;
+    a->indices[middle] = bitIndex;
 }
 
-void turnOff(SBA** a, uint32_t bitIndex) {
-    SBA* b = *a;
+void turnOff(SBA* a, uint32_t bitIndex) {
     int_fast32_t left = 0;
-    int_fast32_t right = (int_fast32_t)b->size - 1;
+    int_fast32_t right = (int_fast32_t)a->size - 1;
     int_fast32_t middle;
     while (left <= right) {
         middle = (right + left) / 2;
-        uint_fast32_t mid_val = b->indices[middle];
+        uint_fast32_t mid_val = a->indices[middle];
         if (mid_val == bitIndex) {
-            b->size -= 1;
-            memmove(b->indices + middle, b->indices + middle + 1, sizeof(uint32_t) * (b->size - middle));
-            if (b->size < b->capacity >> 1) {
+            a->size -= 1;
+            memmove(a->indices + middle, a->indices + middle + 1, sizeof(*a->indices) * (a->size - middle));
+            if (a->size < a->capacity >> 1) {
                 shortenSBA(a);
             }
             return;
@@ -384,7 +387,7 @@ SBA* allocSBA_cp(SBA* a) {
 
 void cp(SBA* dest, SBA* src) {
     dest->size = src->size;
-    memcpy(dest->indices, src->indices, sizeof(uint32_t) * dest->size);
+    memcpy(dest->indices, src->indices, sizeof(*dest->indices) * dest->size);
 }
 
 void subsample(SBA* a, float amount) {

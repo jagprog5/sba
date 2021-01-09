@@ -7,7 +7,7 @@
 typedef struct SBA {
     uint32_t size; // number of ON bits in the array
     uint32_t capacity; // mem currently allocated for the list
-    uint32_t indices[]; // contains indices of bits that are ON
+    uint32_t* indices; // contains indices of bits that are ON.
 } SBA;
 
 // leaves size uninitialized
@@ -21,17 +21,17 @@ void freeSBA(SBA*);
 void printSBA(SBA*);
 
 // reduces the capacity and memory allocated to a, to match its size
-void shortenSBA(SBA** a);
+void shortenSBA(SBA* a);
 
 // flips bit in array at index to ON
 // if the bit is already on, there is no effect (skips duplicate)
 // reallocs if sufficiently large
-void turnOn(SBA** a, uint32_t bitIndex);
+void turnOn(SBA* a, uint32_t bitIndex);
 
 // flips bit in array at index to OFF
 // if the bit is already off, there is no effect
 // reallocs if sufficiently small
-void turnOff(SBA** a, uint32_t bitIndex);
+void turnOff(SBA* a, uint32_t bitIndex);
 
 // returns bool state of bit at index
 uint8_t getBit(SBA* a, uint32_t bitIndex);

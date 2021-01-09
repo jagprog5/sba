@@ -2,6 +2,7 @@
 
 import ctypes as c
 import unittest
+import numpy as np
 
 # relative import
 import pathlib, sys
@@ -23,8 +24,7 @@ class TestSBA(unittest.TestCase):
         with self.assertRaises(SBAException):
             a = SBA(-4, -3, -2, -1)
         a = SBA(blank_size = 5)
-        self.assertEqual(a.struct.capacity, 5)
-        self.assertEqual(c.sizeof(a.struct), c.sizeof(c.c_uint32) * 7)
+        self.assertEqual(a.capacity, 5)
     
     def test_set_bit(self):
         a = SBA(1, 2, 3, 4)
@@ -90,33 +90,32 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a, [0, 1])
         a = SBA.encode_periodic(-1, 1, 2, 10)
         self.assertEqual(a, [0, 1])
+    
+    def test_numpy(self):
+        arr = np.array([1, 2, 3, 4])
+        with self.assertRaises(SBAException):
+            a = SBA.from_numpy_array(arr)
+        arr = arr.astype(np.uint32)
+        a = SBA.from_numpy_array(arr, False)
+        del a[0]
+        self.assertTrue((arr == [2, 3, 4, 4]).all())
+        self.assertEqual(a, [2, 3, 4])
+        arr = np.array([1, 2, 3, 4], dtype=np.uint32)
+        a = SBA.from_numpy_array(arr, True)
+        del a[0]
+        self.assertTrue((arr == [1, 2, 3, 4]).all())
+        self.assertEqual(a, [2, 3, 4])
 
-import numpy as np
-
+        arr_b = a.to_numpy_array(False)
+        del a[0]
+        self.assertTrue((arr_b == [3, 4, 4]).all())
+        self.assertEqual(a, [3, 4])
+        arr_b = a.to_numpy_array(True)
+        del a[0]
+        self.assertTrue((arr_b == [3, 4]).all())
+        self.assertEqual(a, [4])
+        
+        
 if __name__ == "__main__":
-    arr = np.array((1, 2, 3, 4)).astype(np.uint32)
-    a = SBA.from_numpy_array(arr)
-    # print(a)
-    # print(arr)
-    arr_b = a.to_numpy_array(True)
-    print(arr_b)
-    arr_b[-1] = 5
-    print(arr_b)
-    print(a)
-    # print(type(arr) == np.ndarray)
-    # ptr = arr.ctypes.data_as(c.POINTER(c.c_uint32))
-    # a = SBA(numpy=True)
-    # class SBANumpyStruct(c.Structure):
-    #     _fields_ = [
-    #         ('size', c.c_uint32),
-    #         ('capacity', c.c_uint32),
-    #         ('indices', c.POINTER(c.c_uint32))]
-    # struct = SBANumpyStruct()
-    # struct.size = (c.c_uint32)(arr.size)
-    # struct.capacity = struct.size
-    # struct.indices = ptr
-    # a.struct = struct
-    # print(a)
+    unittest.main()
 
-
-    # unittest.main()
