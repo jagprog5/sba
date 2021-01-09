@@ -4,10 +4,10 @@ HEADERDIR = headers
 
 SOURCES := $(wildcard $(SOURCEDIR)/*.c)
 OBJECTS := $(patsubst $(SOURCEDIR)/%.c,$(BUILDDIR)/%.o,$(SOURCES))
-SHARED_LIBRARY = $(BUILDDIR)/ml_lib.so
+SHARED_LIBRARY = $(BUILDDIR)/sba_lib.so
 
 CC = gcc
-CFLAGS = -std=c99 -Wall # -Ofast 
+CFLAGS = -std=c99 -Wall -Ofast 
 LINKFLAGS = -lm
 EXECUTABLE := $(BUILDDIR)/exe
 

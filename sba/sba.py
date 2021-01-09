@@ -1,5 +1,6 @@
 from __future__ import annotations
 import ctypes as c
+import numpy
 from typing import List, Iterable, Union
 import pathlib
 
@@ -29,14 +30,13 @@ class SBAStructIterator:
         self._index += 1
         return ret
         
-
 class SBA():
     '''
     Sparse bit array. This is a wrapper for sba.h
     '''
 
     do_checking = True
-    ml_lib = None
+    sba_lib = None
 
     _fields_ = [
         ('size',c.c_uint32),
@@ -44,17 +44,17 @@ class SBA():
         ('indices',c.POINTER(c.c_uint32))]
     
     def _init_lib_if_needed():
-        if SBA.ml_lib is None:
+        if SBA.sba_lib is None:
             lib_folder = pathlib.Path(__file__).absolute().parents[1] / "build"
-            ml_lib_file = lib_folder / "ml_lib.so"
+            sba_lib_file = lib_folder / "sba_lib.so"
             try:
-                SBA.ml_lib = c.CDLL(ml_lib_file)
+                SBA.sba_lib = c.CDLL(sba_lib_file)
             except OSError as e:
                 print(e)
-                raise SBAException("Couldn't load ml_lib.so in build dir. Run `make shared` at repo root")
+                raise SBAException("Couldn't load sba_lib.so in build dir. Run `make shared` at repo root")
 
             # printSBA
-            SBA.printSBA = SBA.ml_lib.printSBA
+            SBA.printSBA = SBA.sba_lib.printSBA
             SBA.printSBA.restype = None
             SBA.printSBA.argtype = [c.c_void_p]
 
@@ -62,75 +62,75 @@ class SBA():
             # both require realloc, manually implemented
 
             # getBit
-            SBA.getBit = SBA.ml_lib.getBit
+            SBA.getBit = SBA.sba_lib.getBit
             SBA.getBit.restype = c.c_uint8
             SBA.getBit.argtype = [c.c_void_p, c.c_uint32]
 
             # turnOffAll
-            SBA.turnOffAll = SBA.ml_lib.turnOffAll
+            SBA.turnOffAll = SBA.sba_lib.turnOffAll
             SBA.turnOffAll.restype = None
             SBA.turnOffAll.argtype = [c.c_void_p] * 2
 
             # andBits
-            SBA.andBits = SBA.ml_lib.andBits
+            SBA.andBits = SBA.sba_lib.andBits
             SBA.andBits.restype = None
             SBA.andBits.argtype = [c.c_void_p] * 3
 
             # andSize
-            SBA.andSize = SBA.ml_lib.andSize
+            SBA.andSize = SBA.sba_lib.andSize
             SBA.andSize.restype = c.c_uint32
             SBA.andSize.argtype = [c.c_void_p] * 2
 
             # orBits
-            SBA.orBits = SBA.ml_lib.orBits
+            SBA.orBits = SBA.sba_lib.orBits
             SBA.orBits.restype = None
             SBA.orBits.argtype = [c.c_void_p] * 3 + [c.c_uint8]
 
             # orSize
-            SBA.orSize = SBA.ml_lib.orSize
+            SBA.orSize = SBA.sba_lib.orSize
             SBA.orSize.restype = c.c_uint32
             SBA.orSize.argtype = [c.c_void_p] * 2 + [c.c_uint8]
 
             # rshift
-            SBA.rshift = SBA.ml_lib.rshift
+            SBA.rshift = SBA.sba_lib.rshift
             SBA.rshift.restype = None
             SBA.rshift.argtype = [c.c_void_p, c.c_uint32]
 
             # lshift
-            SBA.lshift = SBA.ml_lib.lshift
+            SBA.lshift = SBA.sba_lib.lshift
             SBA.lshift.restype = None
             SBA.lshift.argtype = [c.c_void_p, c.c_uint32]
 
             # equality
-            SBA.equal = SBA.ml_lib.equal
+            SBA.equal = SBA.sba_lib.equal
             SBA.equal.restype = c.c_uint8
             SBA.equal.argtype = [c.c_void_p] * 2
 
             # cp
-            SBA.f_cp = SBA.ml_lib.cp
+            SBA.f_cp = SBA.sba_lib.cp
             SBA.f_cp.restype = None
             SBA.f_cp.argtype = [c.c_void_p] * 2
 
             # subsample
-            SBA.ml_lib.seed_rand()
-            SBA.f_subsample = SBA.ml_lib.subsample
+            SBA.sba_lib.seed_rand()
+            SBA.f_subsample = SBA.sba_lib.subsample
             SBA.f_subsample.restype = None
             SBA.f_subsample.argtype = [c.c_void_p, c.c_float]
 
             # encodeLinear
-            SBA.encodeLinear = SBA.ml_lib.encodeLinear
+            SBA.encodeLinear = SBA.sba_lib.encodeLinear
             SBA.encodeLinear.restype = None
             SBA.encodeLinear.argtype = [c.c_float, c.c_uint32, c.c_void_p]
 
             # encodePeriodic
-            SBA.encodePeriodic = SBA.ml_lib.encodePeriodic
+            SBA.encodePeriodic = SBA.sba_lib.encodePeriodic
             SBA.encodePeriodic.restype = None
             SBA.encodePeriodic.argtype = [c.c_float, c.c_float, c.c_uint32, c.c_void_p]
     
     def __init__(self, *on_bits: Union[int, Iterable[int], SBA], **_special):
         SBA._init_lib_if_needed()
         if not 'blank_size' in _special:
-            if hasattr(on_bits[0], "__getitem__"): # support list, tuple, etc as first arg
+            if len(on_bits) > 0 and hasattr(on_bits[0], "__getitem__"): # support list, tuple, etc as first arg
                 on_bits = on_bits[0]
             ln = len(on_bits)
             if SBA.do_checking:
@@ -147,7 +147,7 @@ class SBA():
             self.struct = _sba_struct_factory(_special['blank_size'])
     
     def enable_checking():
-        '''This is enabled by default. On creation of a SBA, ensures that on_bits are valid. '''
+        '''This is enabled by default. On creation of an SBA, ensures that on_bits are valid. '''
         SBA.do_checking = True
     
     def disable_checking():
@@ -156,6 +156,9 @@ class SBA():
     
     def to_list(self) -> List[int]:
         return [self.struct.indices[i] for i in range(self.struct.size)]
+    
+    def __repr__(self):
+        return self.__str__()
     
     def __str__(self):
         return str(self.to_list())
@@ -174,6 +177,10 @@ class SBA():
     def __add__(self, other):
         if isinstance(other, str):
             return str(self) + other
+        elif isinstance(other, int):
+            return self.cp().set_bit(other, True) # Return modified copy. Do not modify self
+        elif isinstance(other, SBA):
+            return SBA.or_bits(self, other)
         elif hasattr(other, "__getitem__"):
             cp = self.cp()
             for i in other:
@@ -182,10 +189,6 @@ class SBA():
                 else:
                     raise TypeError("for + op, all elements in a list must be integers")
             return cp
-        elif isinstance(other, int):
-            return self.cp().set_bit(other, True) # Return modified copy. Do not modify self
-        elif isinstance(other, SBA):
-            return SBA.or_bits(self, other)
         else:
             raise TypeError(str(type(other)) + " not supported for + op.")
     
@@ -215,10 +218,7 @@ class SBA():
             raise TypeError(str(type(other)) + " not supported for reverse * op.")
     
     def __or__(self, other):
-        if isinstance(other, SBA):
-            return SBA.or_bits(self, other)
-        else:
-            raise TypeError(str(type(other)) + " not supported for | op.")
+        return self.__add__()
     
     def __xor__(self, other):
         if isinstance(other, SBA):
@@ -229,6 +229,8 @@ class SBA():
     def __sub__(self, other):
         if isinstance(other, int):
             return self.cp().set_bit(other, False)
+        elif isinstance(other, SBA):
+            return self.cp().turn_off_all(other)
         elif hasattr(other, "__getitem__"):
             cp = self.cp()
             for i in other:
@@ -237,8 +239,6 @@ class SBA():
                 else:
                     raise TypeError("for - op, all elements in a list must be integers")
             return cp
-        elif isinstance(other, SBA):
-            return self.cp().turn_off_all(other)
         else:
             raise TypeError(str(type(other)) + " not supported for - op.")
     
@@ -247,7 +247,7 @@ class SBA():
 
     def __rshift__(self, n):
         if isinstance(n, int):
-            return self.shift(n)
+            return self.cp().shift(n)
         else:
             raise TypeError(str(type(other)) + " not supported for >> or << ops.")
     
@@ -396,15 +396,19 @@ class SBA():
     def shift(self, n: int):
         ''' Bitshift '''
         if n > 0:
-            SBA.rshift(c.byref(self.struct), c.c_uint32(n))
+            SBA.lshift(c.byref(self.struct), c.c_uint32(n))
         else:
-            SBA.lshift(c.byref(self.struct), c.c_uint32(-n))
+            SBA.rshift(c.byref(self.struct), c.c_uint32(-n))
         return self
 
-    def __eq__(self, other):
-        if not isinstance(other, SBA):
-            raise TypeError("== op only defined between SBAs, and not type: " + str(type(other)))
-        return bool(SBA.equal(c.byref(self.struct), c.byref(other.struct)))
+    def __eq__(self, other) -> bool:
+        if isinstance(other, SBA):
+            return bool(SBA.equal(c.byref(self.struct), c.byref(other.struct)))
+        elif hasattr(other, "__getitem__"):
+            ln = self.struct.size
+            return len(other) == ln and all(other[i] == self[i] for i in range(ln))
+        else:
+            return False
     
     def cp(self) -> SBA:
         ''' Returns deep copy of self. '''
@@ -421,7 +425,7 @@ class SBA():
     
     def encode_linear(input: float, num_on_bits: int, size: int) -> SBA:
         '''
-        Encodes a float as a SBA
+        Encodes a float as an SBA
         input is in range [0,1]
         num_on_bits is the number of bits that will be flipped to ON
         size is the total size of the array
@@ -429,6 +433,7 @@ class SBA():
         if input < 0: # nothing breaks if input is > 1
             raise SBAException("Can't encode a negative value in this function.")
         r = SBA(blank_size = num_on_bits)
+        r.struct.size = r.struct.capacity
         SBA.encodeLinear(c.c_float(input), c.c_uint32(size), c.byref(r.struct))
         return r
     
@@ -439,24 +444,44 @@ class SBA():
         num_on_bits is the number of bits that will be flipped to ON
         size is the total size of the array
         '''
-        if period <= 0: # nothing breaks if input is > 1
+        if period <= 0:
             raise SBAException("Period must be positive.")
+        elif num_on_bits > size:
+            raise SBAException("The number of on bits can't exceed the size of the array.")
         r = SBA(blank_size = num_on_bits)
+        r.struct.size = r.struct.capacity
         SBA.encodePeriodic(c.c_float(input), c.c_float(period), c.c_uint32(size), c.byref(r.struct))
         return r
+    
+    def from_numpy_array(arr: numpy.ndarray) -> SBA:
+        '''
+        copys the memory from the numpy array into an SBA
+        '''
+        if arr.dtype != numpy.uint32:
+            raise SBAException("The numpy array must be of type uint32, try `arr.astype(np.uint32)`")
+        size = arr.size
+        if SBA.do_checking and not all(arr[i] <= arr[i+1] for i in range(size-1)):
+            raise SBAException("the indices must be in ascending order")
 
-if __name__ == "__main__":
-    a = SBA(10, 20, 80, 90)
-    a.print_SBA()
-    # b = SBA(2, 8, 9, 10)
-    # r = SBA.xor_bits(a, b)
-    # print(r)
-    # a.set_bit(1, False)
-    # r.shorten().print_SBA()
-    # a[-2] = 10
-    # print(a)
-    # print(a - 2)
-    # b = SBA(a)
-    # a.set_bit(2, False)
-    # a.set_bit(1000, True)
-    # print(a + " & " + b + " = " + a * b)
+        r = SBA(blank_size = size)
+        r.struct.size = r.struct.capacity
+        src_ptr = arr.ctypes.data_as(c.POINTER(c.c_uint32))
+        c.memmove(r.struct.indices, src_ptr, c.sizeof(c.c_uint32) * c.sizeof(c.c_uint32))
+
+        return r
+
+    def to_numpy_array(self, deep_copy=True) -> numpy.ndarray:
+        '''
+        Warning:
+        If deep_copy is False, then the returned array will be a shallow copy of this SBA.
+        Read: Two objects modifying the same section of memory.
+        Which is fine if you know what you're doing, but aliasing is scary.
+        Perhaps set this SBA to None after shallow copying
+
+        If deep_copy is True, then the returned array has a separate copy of the data.
+        '''
+        arr = numpy.frombuffer(self.struct.indices, dtype=numpy.uint32)
+        if deep_copy:
+            self.struct = self.cp().struct
+        return arr
+
