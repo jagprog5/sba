@@ -2,7 +2,9 @@
 
 A sparse bit array stores the indices of the bits that are ON for an arbitrarily lengthed array.
 
-This package is a wrapper for a C shared library.
+This package is a C lib wrapper.
+
+## Overview
 
 ```python
 from sba import *
@@ -28,4 +30,12 @@ d = SBA.encode_linear(0.5, 3, 100) # [49, 50, 51]
 d = SBA.encode_linear(1.0, 3, 100) # [97, 98, 99]
 ```
 
-A bunch of operators are overloaded (+, -, *, &, |, <<, [i], etc.), except for the complement operator, since it doesn't make sense in the context of SBAs.
+## Installation
+
+From github:
+
+```bash
+git clone https://github.com/jagprog5/sba.git
+cd sba
+make install
+```

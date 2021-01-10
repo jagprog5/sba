@@ -1,8 +1,13 @@
 from __future__ import annotations
 import ctypes as c
-import numpy
 from typing import List, Iterable, Union
 import pathlib
+
+try:
+    import numpy
+except:
+    # I don't want to have it as a dependency
+    pass # No need to do conversions if numpy isn't installed
 
 class SBAException(Exception):
     pass
@@ -34,13 +39,15 @@ class SBA(c.Structure):
     
     def _init_lib_if_needed():
         if SBA.sba_lib is None:
-            lib_folder = pathlib.Path(__file__).absolute().parents[1] / "build"
-            sba_lib_file = lib_folder / "sba_lib.so"
+            lib_folder = pathlib.Path(__file__).absolute().parents[0] / "c-build"
+            g = lib_folder.glob("sba_lib.*")
             try:
-                SBA.sba_lib = c.CDLL(sba_lib_file)
-            except OSError as e:
+                sba_lib_file = g.__next__()
+            except StopIteration as e:
                 print(e)
-                raise SBAException("Couldn't load sba_lib.so in build dir. Run `make shared` at repo root")
+                raise SBAException("Couldn't load sba_lib in: " + str(lib_folder))
+                    
+            SBA.sba_lib = c.CDLL(sba_lib_file)
 
             # printSBA
             SBA.printSBA = SBA.sba_lib.printSBA

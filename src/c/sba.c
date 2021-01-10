@@ -259,13 +259,13 @@ void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
         r->indices[r_size++] = a_val;
         goto get_a;
     } else if ((a && b && a_val > b_val) || (!a && b)) {
-    #pragma GCC diagnostic pop
         r->indices[r_size++] = b_val;
         goto get_b;
     } else if (a && b && a_val == b_val) {
         if (!exclusive) r->indices[r_size++] = a_val;
         goto get_both;
     }
+    #pragma GCC diagnostic pop
 
     get_a:
     if (a_offset >= a->size) {
@@ -401,7 +401,7 @@ void subsample(SBA* a, float amount) {
     uint_fast32_t to_offset = 0;
     uint_fast32_t from_offset = 0;
     while (from_offset < a->size) {
-        if (rand() > check_val) {
+        if ((unsigned int)rand() > check_val) {
             ++from_offset;
         } else {
             a->indices[to_offset++] = a->indices[from_offset++];
@@ -424,7 +424,7 @@ void encodePeriodic(float input, float period, uint32_t n, SBA* r) {
     int_fast32_t num_wrapped = (int_fast32_t)(start_offset + r->size) - (int_fast32_t)n;
     uint_fast32_t num_remaining;
     if (num_wrapped > 0) {
-        for (uint_fast32_t i = 0; i < num_wrapped; ++i) {
+        for (uint_fast32_t i = 0; i < (uint_fast32_t)num_wrapped; ++i) {
             r->indices[i] = i;
         }
         num_remaining = r->size - num_wrapped;

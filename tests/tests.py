@@ -3,10 +3,6 @@
 import ctypes as c
 import unittest
 import numpy as np
-
-# relative import
-import pathlib, sys
-sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
 from sba import *
 
 class TestSBA(unittest.TestCase):
@@ -128,5 +124,6 @@ class TestSBA(unittest.TestCase):
         
         
 if __name__ == "__main__":
+    SBA() # give lib import error rather than failed tests
     unittest.main()
 

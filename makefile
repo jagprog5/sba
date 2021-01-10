@@ -1,34 +1,10 @@
-BUILDDIR = src/py/c-objects
-SOURCEDIR = src/c
-HEADERDIR = src/c
-
-SOURCES := $(wildcard $(SOURCEDIR)/*.c)
-OBJECTS := $(patsubst $(SOURCEDIR)/%.c,$(BUILDDIR)/%.o,$(SOURCES))
-
-CC = gcc
-CFLAGS = -std=c99 -Wall -Ofast
-BUILDFLAGS = -fPIC # -fPIC can be ommitted for run, but is needed for shared, .so files
-LINKFLAGS = -lm
-EXECUTABLE := $(BUILDDIR)/exe
-SHARED_LIBRARY := $(BUILDDIR)/sba_lib.so
-
-.PHONY: all clean run shared
-
-all: $(EXECUTABLE)
-
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $^ -o $@ $(LINKFLAGS)
-
-$(BUILDDIR)/%.o: $(SOURCEDIR)/%.c 
-	$(CC) -I$(HEADERDIR) -c $< -o $@ $(CFLAGS) $(BUILDFLAGS)
-
-$(SHARED_LIBRARY): $(OBJECTS)
-	$(CC) -shared -o $@ $^
+PYTHON=python3
 
 clean:
-	find $(BUILDDIR) -type f -not -name '.gitignore' -delete -print
+	rm -rf build dist src/py/__pycache__ sparse_bit_arrays*
 
-run: all
-	$(EXECUTABLE)
+install:
+	$(PYTHON) -m pip install .
 
-shared: $(SHARED_LIBRARY)
+test:
+	$(PYTHON) tests/tests.py
