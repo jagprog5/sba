@@ -446,11 +446,13 @@ class SBA(c.Structure):
         SBA.encodePeriodic(c.c_float(input), c.c_float(period), c.c_uint32(size), c.byref(r))
         return r
     
-    def from_numpy_array(arr: numpy.ndarray, deep_copy=True) -> SBA:
+    def from_np(arr: numpy.ndarray, deep_copy=True) -> SBA:
         '''
+        Converts from a numpy array.
+
         If deep_copy is False, then the returned SBA will be a shallow copy of the numpy array.
         Read: Two objects sharing the same section of memory.
-        Perhaps set arr to None after shallow copying.
+        Perhaps set arr to None after shallow copying to prevent aliasing.
 
         If deep_copy is True, then the returned SBA has a separate copy of the data.
         '''
@@ -470,11 +472,13 @@ class SBA(c.Structure):
             a.indices = arr_ptr
         return a
 
-    def to_numpy_array(self, deep_copy=True) -> numpy.ndarray:
+    def to_np(self, deep_copy=True) -> numpy.ndarray:
         '''
+        Converts to a numpy array.
+
         If deep_copy is False, then the returned array will be a shallow copy of this SBA.
         Read: Two objects sharing the same section of memory.
-        Perhaps set this SBA to None after shallow copying.
+        Perhaps set this SBA to None after shallow copying to prevent aliasing.
 
         If deep_copy is True, then the returned array has a separate copy of the data.
         '''

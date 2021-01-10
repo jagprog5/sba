@@ -253,10 +253,13 @@ void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
     b_val = b->indices[b_offset++];
 
     loop:
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
     if ((a && b && a_val < b_val) || (a && !b)) {
         r->indices[r_size++] = a_val;
         goto get_a;
     } else if ((a && b && a_val > b_val) || (!a && b)) {
+    #pragma GCC diagnostic pop
         r->indices[r_size++] = b_val;
         goto get_b;
     } else if (a && b && a_val == b_val) {
@@ -321,7 +324,10 @@ uint32_t orSize(SBA* a, SBA* b, uint8_t exclusive) {
     } else if ((a && b && a_val > b_val) || (!a && b)) {
         size += 1;
         goto get_b;
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
     } else if (a && b && a_val == b_val) {
+    #pragma GCC diagnostic pop
         if (!exclusive) size += 1;
         goto get_both;
     }

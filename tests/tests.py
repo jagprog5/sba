@@ -6,7 +6,7 @@ import numpy as np
 
 # relative import
 import pathlib, sys
-sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
 from sba import *
 
 class TestSBA(unittest.TestCase):
@@ -94,26 +94,37 @@ class TestSBA(unittest.TestCase):
     def test_numpy(self):
         arr = np.array([1, 2, 3, 4])
         with self.assertRaises(SBAException):
-            a = SBA.from_numpy_array(arr)
+            a = SBA.from_np(arr)
         arr = arr.astype(np.uint32)
-        a = SBA.from_numpy_array(arr, False)
+        a = SBA.from_np(arr, False)
         del a[0]
         self.assertTrue((arr == [2, 3, 4, 4]).all())
         self.assertEqual(a, [2, 3, 4])
         arr = np.array([1, 2, 3, 4], dtype=np.uint32)
-        a = SBA.from_numpy_array(arr, True)
+        a = SBA.from_np(arr, True)
         del a[0]
         self.assertTrue((arr == [1, 2, 3, 4]).all())
         self.assertEqual(a, [2, 3, 4])
 
-        arr_b = a.to_numpy_array(False)
+        arr_b = a.to_np(False)
         del a[0]
         self.assertTrue((arr_b == [3, 4, 4]).all())
         self.assertEqual(a, [3, 4])
-        arr_b = a.to_numpy_array(True)
+        arr_b = a.to_np(True)
         del a[0]
         self.assertTrue((arr_b == [3, 4]).all())
         self.assertEqual(a, [4])
+    
+    def test_large_array(self):
+        a = SBA()
+        while a.size < 100000:
+            a.set_bit(a.size, True)
+        a.set_bit(0xFFFFFFFF, True)
+        self.assertEqual(a[-1], 0xFFFFFFFF)
+        a.set_bit(0, False)
+        self.assertEqual(a[0], 1)
+        while a.size > 0:
+            del a[-1]
         
         
 if __name__ == "__main__":
