@@ -47,7 +47,7 @@ class SBA(c.Structure):
                 print(e)
                 raise SBAException("Couldn't load sba_lib in: " + str(lib_folder))
                     
-            SBA.sba_lib = c.CDLL(sba_lib_file)
+            SBA.sba_lib = c.CDLL(str(sba_lib_file)) # str needed for windows path
 
             # printSBA
             SBA.printSBA = SBA.sba_lib.printSBA
