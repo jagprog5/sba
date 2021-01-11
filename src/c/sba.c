@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifdef _WIN32
+void PyInit_sba_lib() {}
+#endif
+
 SBA* _allocSBA_nosetsize(uint32_t initialCap) {
     SBA* a = malloc(sizeof(*a));
     a->indices = malloc(sizeof(*a->indices) * initialCap);
@@ -144,7 +148,7 @@ SBA* allocSBA_andBits(SBA* a, SBA* b) {
     return _allocSBA_nosetsize(a->size < b->size ? a->size : b->size); // and sets the size
 }
 
-void andBits(SBA* r, SBA* a, SBA* b) {
+void andBits(void* r, SBA* a, SBA* b, uint8_t size_only) {
     uint_fast32_t a_offset = 0;
     uint_fast32_t a_val;
     uint_fast32_t a_size = a->size; // store in case r = a
@@ -171,7 +175,10 @@ void andBits(SBA* r, SBA* a, SBA* b) {
         a_val = a->indices[a_offset++];
         goto loop;
     } else if (a_val == b_val) {
-        r->indices[r_size++] = a_val;
+        if (!size_only) {
+            ((SBA*)r)->indices[r_size] = a_val;
+        }
+        r_size += 1;
         goto get_both;
     } else {
         // get b
@@ -182,44 +189,10 @@ void andBits(SBA* r, SBA* a, SBA* b) {
         goto loop;
     }
     end:
-    r->size = r_size;
-}
-
-uint32_t andSize(SBA* a, SBA* b) {
-    uint_fast32_t size = 0;
-    uint_fast32_t a_offset = 0;
-    uint_fast32_t a_val;
-    uint_fast32_t a_size = a->size;
-    uint_fast32_t b_offset = 0;
-    uint_fast32_t b_val;
-    uint_fast32_t b_size = b->size;
-    get_both:
-    if (a_offset >= a_size) {
-        return size;
-    }
-    a_val = a->indices[a_offset++];
-    if (b_offset >= b_size) {
-        return size;
-    }
-    b_val = b->indices[b_offset++];
-    loop:
-    if (a_val < b_val) {
-        // get a
-        if (a_offset >= a_size) {
-            return size;
-        }
-        a_val = a->indices[a_offset++];
-        goto loop;
-    } else if (a_val == b_val) {
-        size += 1;
-        goto get_both;
+    if (size_only) {
+        *((uint32_t*)r) = r_size;
     } else {
-        // get b
-        if (b_offset >= b_size) {
-            return size;
-        }
-        b_val = b->indices[b_offset++];
-        goto loop;
+        ((SBA*)r)->size = r_size;
     }
 }
 
@@ -227,7 +200,7 @@ SBA* allocSBA_or(SBA* a, SBA* b) {
     return _allocSBA_nosetsize(a->size + b->size);
 }
 
-void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
+void orBits(void* r, SBA* a, SBA* b, uint8_t exclusive, uint8_t size_only) {
     uint_fast32_t a_offset = 0;
     uint_fast32_t a_val;
     uint_fast32_t b_offset = 0;
@@ -256,13 +229,24 @@ void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
     if ((a && b && a_val < b_val) || (a && !b)) {
-        r->indices[r_size++] = a_val;
+        if (!size_only) {
+            ((SBA*)r)->indices[r_size] = a_val;
+        }
+        r_size += 1;
         goto get_a;
     } else if ((a && b && a_val > b_val) || (!a && b)) {
-        r->indices[r_size++] = b_val;
+        if (!size_only) {
+            ((SBA*)r)->indices[r_size] = b_val;
+        }
+        r_size += 1;
         goto get_b;
     } else if (a && b && a_val == b_val) {
-        if (!exclusive) r->indices[r_size++] = a_val;
+        if (!exclusive) {
+            if (!size_only) {
+                ((SBA*)r)->indices[r_size] = a_val;
+            }
+            r_size += 1;
+        }
         goto get_both;
     }
     #pragma GCC diagnostic pop
@@ -290,69 +274,11 @@ void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive) {
     goto loop;
 
     end:
-    r->size = r_size;
-}
-
-uint32_t orSize(SBA* a, SBA* b, uint8_t exclusive) {
-    uint_fast32_t size = 0;
-    uint_fast32_t a_offset = 0;
-    uint_fast32_t a_val;
-    uint_fast32_t b_offset = 0;
-    uint_fast32_t b_val;
-    get_both:
-    if (a_offset >= a->size) {
-        if (!b) {
-            return size;
-        }
-        a = NULL;
-        goto get_b;
+    if (size_only) {
+        *((uint32_t*)r) = r_size;
+    } else {
+        ((SBA*)r)->size = r_size;
     }
-    a_val = a->indices[a_offset++];
-    if (b_offset >= b->size) {
-        if (!a) {
-            return size;
-        }
-        b = NULL;
-        goto loop;
-    }
-    b_val = b->indices[b_offset++];
-
-    loop:
-    if ((a && b && a_val < b_val) || (a && !b)) {
-        size += 1;
-        goto get_a;
-    } else if ((a && b && a_val > b_val) || (!a && b)) {
-        size += 1;
-        goto get_b;
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-    } else if (a && b && a_val == b_val) {
-    #pragma GCC diagnostic pop
-        if (!exclusive) size += 1;
-        goto get_both;
-    }
-
-    get_a:
-    if (a_offset >= a->size) {
-        if (!b) {
-            return size;
-        }
-        a = NULL;
-        goto loop;
-    }
-    a_val = a->indices[a_offset++];
-    goto loop;
-
-    get_b:
-    if (b_offset >= b->size) {
-        if (!a) {
-            return size;
-        }
-        b = NULL;
-        goto loop;
-    }
-    b_val = b->indices[b_offset++];
-    goto loop;
 }
 
 void rshift(SBA* a, uint32_t n) {

@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+#ifdef _WIN32
+#define EXPORT __declspec(dllexport)
+#else
+#define EXPORT
+#endif
+
 // sparse bit array. sorted arraylist implementation
 typedef struct SBA {
     uint32_t size; // number of ON bits in the array
@@ -18,7 +24,7 @@ SBA* allocSBA(uint32_t initialCap);
 
 void freeSBA(SBA*);
 
-void printSBA(SBA*);
+EXPORT void printSBA(SBA*);
 
 // reduces the capacity and memory allocated to a, to match its size
 void shortenSBA(SBA* a);
@@ -34,66 +40,68 @@ void turnOn(SBA* a, uint32_t bitIndex);
 void turnOff(SBA* a, uint32_t bitIndex);
 
 // returns bool state of bit at index
-uint8_t getBit(SBA* a, uint32_t bitIndex);
+EXPORT uint8_t getBit(SBA* a, uint32_t bitIndex);
 
 // turns bits in a to off that are also contained in rm
-void turnOffAll(SBA* a, SBA* rm);
+EXPORT void turnOffAll(SBA* a, SBA* rm);
 
-// allocates a SBA with sufficient capacity to be used as the result in the AND op.
+// allocates an SBA with sufficient capacity to be used as the result in the AND op.
 // the allocated SBA has an uninitalized size, since this is set in the AND op
 // this is based on the argument SBAs' CURRENT SIZES, and not their capacities
 SBA* allocSBA_andBits(SBA*, SBA*);
 
-// ANDs a and b, and places the result in r
-// r->capacity >= min(a->size, b->size). r can be a or b
-void andBits(SBA* r, SBA* a, SBA* b);
+// If size_only is false:
+//      ANDs a and b, and places the result in r, an SBA pointer.
+//      r->capacity >= min(a->size, b->size). r can be a or b.
+// If size_only is true:
+//      ANDs a and b, and writes the number of bits in common to the uint32_t* r.
+EXPORT void andBits(void* r, SBA* a, SBA* b, uint8_t size_only);
 
-// returns the number of bits on in a AND b
-uint32_t andSize(SBA* a, SBA* b);
-
-// allocates a SBA with sufficient capacity to be used as the result in the OR or XOR op.
-// the allocated SBA has an uninitalized size, since this is set in the OR op
-// this is based on the argument SBAs' CURRENT SIZES, and not their capacities
+// allocates an SBA with sufficient capacity to be used as the result in the OR or XOR op.
+// the allocated SBA has an uninitalized size, since this is set in the OR op.
+// this is based on the argument SBAs' CURRENT SIZES, and not their capacities.
 SBA* allocSBA_or(SBA*, SBA*);
 
-// ORs a and b, and places the result in r
-// r->capacity >= a->size + b->size. 
-// Unlike the AND op, r can't be a or b.
-// if exclusive is nonzero, XOR is used instead
-void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive);
-
-// returns the number of bits on in a OR b. if exclusive is nonzero, XOR is used instead
-uint32_t orSize(SBA* a, SBA* b, uint8_t exclusive);
+// If size_only is false:
+//      ORs a and b, and places the result in r, an SBA pointer.
+//      r->capacity >= a->size + b->size. 
+//      Unlike the AND op, r can't be a or b.
+// If size_only is true:
+//      ORs a and b, and writes the number of bits in common to the uint32_t* r.
+// if exclusive is true, XOR is used instead of OR.
+EXPORT void orBits(void* r, SBA* a, SBA* b, uint8_t exclusive, uint8_t size_only);
 
 // increases a by bitshifting n places
-void rshift(SBA* a, uint32_t n);
+EXPORT void rshift(SBA* a, uint32_t n);
 
 // decreases a by bitshifting n places
-void lshift(SBA* a, uint32_t n);
+EXPORT void lshift(SBA* a, uint32_t n);
 
 // returns 1 if they are equal, and 0 if they are not equal
-uint8_t equal(SBA* a, SBA* b);
+EXPORT uint8_t equal(SBA* a, SBA* b);
 
-// allocates a SBA with sufficient capacity to be used as the destination in the cp operation.
+// allocates an SBA with sufficient capacity to be used as the destination in the cp operation.
 // this is based on the argument SBA's CURRENT SIZE, and not its capacity
 SBA* allocSBA_cp(SBA* src);
 
 // copies the src to the dest
 // dest must have sufficient capacity (dest->capacity = src->size)
-void cp(SBA* dest, SBA* src);
+EXPORT void cp(SBA* dest, SBA* src);
 
 // randomly flips bits off
 // amount in range [0, 1], where 0 clears the list
-void subsample(SBA* a, float amount);
+EXPORT void subsample(SBA* a, float amount);
 
 // input in [0,1], the value to encode
 // n is the number of total bits in the SBA. n >= r->size
 // r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
-void encodeLinear(float input, uint32_t n, SBA* r);
+EXPORT void encodeLinear(float input, uint32_t n, SBA* r);
 
 // input is the the value to encode. it is encoded linearly, except its encoding wraps back to 0 as it approaches period
 // n is the number of total bits in the SBA. n >= r->size
 // r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
-void encodePeriodic(float input, float period, uint32_t n, SBA* r);
+EXPORT void encodePeriodic(float input, float period, uint32_t n, SBA* r);
+
+EXPORT void seed_rand();
 
 #endif

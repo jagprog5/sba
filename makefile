@@ -1,10 +1,18 @@
 PYTHON=python3
-
-clean:
-	rm -rf build dist src/py/__pycache__ sparse_bit_arrays*
+SHARED_LIBRARY=src/py/c-build/sba_lib.so
 
 install:
 	$(PYTHON) -m pip install .
 
-test:
-	$(PYTHON) tests/tests.py
+clean:
+	rm -rf build dist src/py/__pycache__ sparse_bit_arrays* src/py/c-build/*.so
+
+test: # requires install
+	./tests/tests.py
+
+# no need to install on system. Test within repo:
+test-local: $(SHARED_LIBRARY)
+	./tests/tests.py --local
+
+$(SHARED_LIBRARY):
+	gcc -o $(SHARED_LIBRARY) -Isrc/c src/c/sba.c -fPIC -shared

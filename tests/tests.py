@@ -3,7 +3,7 @@
 import ctypes as c
 import unittest
 import numpy as np
-from sba import *
+import argparse
 
 class TestSBA(unittest.TestCase):
     def test_instantiation(self):
@@ -122,8 +122,18 @@ class TestSBA(unittest.TestCase):
         while a.size > 0:
             del a[-1]
         
-        
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Do tests on SBA module.')
+    parser.add_argument("-l", "--local", action="store_true", help="Prioritize importing from this repo, " +
+            "and not the system installed package with the same name.")
+    args = parser.parse_args()
+    relative_import = args.local
+    if relative_import:
+        import pathlib, sys
+        sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
+    from sba import *
+
     SBA() # give lib import error rather than failed tests
     unittest.main()
+
 
