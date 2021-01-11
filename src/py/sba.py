@@ -328,7 +328,7 @@ class SBA(c.Structure):
         if self.size >= self.capacity:
             self.capacity = 1 + self.capacity + self.capacity // 2
             new_indices = (c.c_uint32 * self.capacity)()
-            c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.capacity)
+            c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.size)
             self.indices = new_indices
             return self
     
@@ -340,7 +340,7 @@ class SBA(c.Structure):
         ''' Reduces the allocated memory to match the size. '''
         self.capacity = self.size
         new_indices = (c.c_uint32 * self.capacity)()
-        c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.capacity)
+        c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.size)
         self.indices = new_indices
         return self
     
@@ -358,35 +358,35 @@ class SBA(c.Structure):
     
     def and_bits(a: SBA, b: SBA) -> SBA:
         r = SBA(blank_size = min(a.size, b.size))
-        SBA.andBits(c.byref(r), c.byref(a), c.byref(b), c.c_uint8(0))
+        SBA.andBits(c.byref(r), c.byref(a), c.byref(b), 0)
         return r
 
     def and_size(a: SBA, b: SBA) -> int:
         ''' Returns the number of bits in a AND in b. '''
         r = (c.c_uint32)()
-        SBA.andBits(c.byref(r), c.byref(a), c.byref(b), c.c_uint8(1))
+        SBA.andBits(c.byref(r), c.byref(a), c.byref(b), 1)
         return r.value
 
     def or_bits(a: SBA, b: SBA) -> SBA:
         r = SBA(blank_size = a.size + b.size)
-        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), c.c_uint8(0), c.c_uint8(0))
+        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), 0, 0)
         return r
 
     def or_size(a: SBA, b: SBA) -> int:
         ''' Returns the number of bits in a OR b. '''
         r = (c.c_uint32)()
-        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), c.c_uint8(0), c.c_uint8(1))
+        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), 0, 1)
         return r.value
 
     def xor_bits(a: SBA, b: SBA) -> SBA:
         r = SBA(blank_size = a.size + b.size)
-        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), c.c_uint8(1), c.c_uint8(0))
+        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), 1, 0)
         return r
     
     def xor_size(a: SBA, b: SBA) -> int:
         ''' Returns the number of bits in a XOR b. '''
         r = (c.c_uint32)()
-        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), c.c_uint8(1), c.c_uint8(1))
+        SBA.orBits(c.byref(r), c.byref(a), c.byref(b), 1, 1)
         return r.value
     
     def shift(self, n: int):

@@ -113,7 +113,7 @@ class TestSBA(unittest.TestCase):
     
     def test_large_array(self):
         a = SBA()
-        while a.size < 1000:
+        while a.size < 100000:
             a.set_bit(a.size, True)
         a.set_bit(0xFFFFFFFF, True)
         self.assertEqual(a[-1], 0xFFFFFFFF)
@@ -121,6 +121,7 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a[0], 1)
         while a.size > 0:
             del a[-1]
+    
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Do tests on SBA module.')
@@ -133,7 +134,7 @@ if __name__ == "__main__":
         sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
     from sba import *
 
-    SBA() # give lib import error rather than failed tests
+    SBA._init_lib_if_needed() # give lib import error rather than failed tests
     unittest.main()
 
 
