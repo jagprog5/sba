@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifdef _WIN32
+void PyInit_sba_lib() {}
+#endif
+
 SBA* _allocSBA_nosetsize(uint32_t initialCap) {
     SBA* a = malloc(sizeof(*a));
     a->indices = malloc(sizeof(*a->indices) * initialCap);
