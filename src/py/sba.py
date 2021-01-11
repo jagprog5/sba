@@ -328,7 +328,7 @@ class SBA(c.Structure):
         if self.size >= self.capacity:
             self.capacity = 1 + self.capacity + self.capacity // 2
             new_indices = (c.c_uint32 * self.capacity)()
-            c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.capacity)
+            c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.size)
             self.indices = new_indices
             return self
     
@@ -340,7 +340,7 @@ class SBA(c.Structure):
         ''' Reduces the allocated memory to match the size. '''
         self.capacity = self.size
         new_indices = (c.c_uint32 * self.capacity)()
-        c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.capacity)
+        c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.size)
         self.indices = new_indices
         return self
     
