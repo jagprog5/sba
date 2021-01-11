@@ -134,7 +134,7 @@ if __name__ == "__main__":
         sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
     from sba import *
 
-    SBA() # give lib import error rather than failed tests
+    SBA._init_lib_if_needed() # give lib import error rather than failed tests
     unittest.main()
 
 
