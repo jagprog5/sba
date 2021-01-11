@@ -5,8 +5,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="sparse-bit-arrays-jagprog5-TEST", # sparse-bit-arrays
-    version="0.0.11",
+    name="sparse-bit-arrays",
+    version="0.0.2",
     author="John Giorshev",
     description="sparse bit arrays",
     long_description=long_description,

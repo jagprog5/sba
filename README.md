@@ -30,18 +30,15 @@ d = SBA.encode_linear(0.5, 3, 100) # [49, 50, 51]
 d = SBA.encode_linear(1.0, 3, 100) # [97, 98, 99]
 ```
 
-## Installation
-
-### Pip
+## Installation: pypi
 
 The package is a source distribution, not a binary distribution. Windows users may need to do [this](https://docs.microsoft.com/en-us/answers/questions/136595/error-microsoft-visual-c-140-or-greater-is-require.html).
 
 
-```diff
-+pip install -i https://test.pypi.org/simple/ sparse-bit-arrays-jagprog5-TEST
--pip install sparse-bit-arrays <-- TODO
+```bash
+pip install sparse-bit-arrays
 ```
-### GitHub
+## Installation: GitHub
 ```bash
 git clone https://github.com/jagprog5/sba.git
 cd sba
