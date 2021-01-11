@@ -121,6 +121,7 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a[0], 1)
         while a.size > 0:
             del a[-1]
+    
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Do tests on SBA module.')
