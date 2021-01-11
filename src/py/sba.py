@@ -113,29 +113,35 @@ class SBA(c.Structure):
             SBA.encodePeriodic.restype = None
             SBA.encodePeriodic.argtype = [c.c_float, c.c_float, c.c_uint32, c.POINTER(SBA)]
     
+    def _throw_if_indices_not_valid(l, ln):
+        if not all(isinstance(l[i], int) for i in range(ln)):
+            raise SBAException("indices must only contain ints.")
+        if not all(l[i] <= l[i+1] for i in range(ln-1)):
+            raise SBAException("indices must be in ascending order.")
+        if not all(l[i] >= 0 for i in range(ln)):
+            raise SBAException("indices must only contain non-negative integers.")
+    
     def __init__(self, *on_bits: Union[int, Iterable[int], SBA], **_special):
         SBA._init_lib_if_needed()
-        if 'uninit' in _special:
-            return
-        elif not 'blank_size' in _special:
+        if len(_special) == 0:
             if len(on_bits) > 0 and hasattr(on_bits[0], "__getitem__"): # support list, tuple, etc as first arg
                 on_bits = on_bits[0]
             ln = len(on_bits)
             if SBA.do_checking:
-                if not all(isinstance(on_bits[i], int) for i in range(ln)):
-                    raise SBAException("on_bits must only contain ints.")
-                if not all(on_bits[i] <= on_bits[i+1] for i in range(ln-1)):
-                    raise SBAException("on_bits must be in ascending order.")
-                if not all(on_bits[i] >= 0 for i in range(ln)):
-                    raise SBAException("on_bits must only contain non-negative integers.")
+                SBA._throw_if_indices_not_valid(on_bits, ln)
             self.size = (c.c_uint32)(ln)
             self.capacity = self.size
             self.indices = (c.c_uint32 * ln)(*on_bits)
-        else:
+        elif 'uninit' in _special:
+            return
+        elif 'blank_size' in _special:
             ln = _special['blank_size']
             self.size = (c.c_uint32)(ln)
             self.capacity = self.size
             self.indices = (c.c_uint32 * ln)()
+        else:
+            raise SBAException("Unknown kws: " + str(_special))
+            
     
     def enable_checking():
         '''This is enabled by default. On creation of an SBA, ensures that on_bits are valid. '''
