@@ -32,8 +32,10 @@ d = SBA.encode_linear(1.0, 3, 100) # [97, 98, 99]
 
 ## Installation
 
-From github:
-
+```bash
+pip install sparse-bit-arrays
+```
+or
 ```bash
 git clone https://github.com/jagprog5/sba.git
 cd sba

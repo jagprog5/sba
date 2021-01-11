@@ -3,6 +3,10 @@
 import ctypes as c
 import unittest
 import numpy as np
+
+# relative import. Prioritize importing from the repo BEFORE the system installed package
+import pathlib, sys
+sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
 from sba import *
 
 class TestSBA(unittest.TestCase):

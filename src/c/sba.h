@@ -39,31 +39,31 @@ uint8_t getBit(SBA* a, uint32_t bitIndex);
 // turns bits in a to off that are also contained in rm
 void turnOffAll(SBA* a, SBA* rm);
 
-// allocates a SBA with sufficient capacity to be used as the result in the AND op.
+// allocates an SBA with sufficient capacity to be used as the result in the AND op.
 // the allocated SBA has an uninitalized size, since this is set in the AND op
 // this is based on the argument SBAs' CURRENT SIZES, and not their capacities
 SBA* allocSBA_andBits(SBA*, SBA*);
 
-// ANDs a and b, and places the result in r
-// r->capacity >= min(a->size, b->size). r can be a or b
-void andBits(SBA* r, SBA* a, SBA* b);
+// If size_only is false:
+//      ANDs a and b, and places the result in r, an SBA pointer.
+//      r->capacity >= min(a->size, b->size). r can be a or b.
+// If size_only is true:
+//      ANDs a and b, and writes the number of bits in common to the uint32_t* r.
+void andBits(void* r, SBA* a, SBA* b, uint8_t size_only);
 
-// returns the number of bits on in a AND b
-uint32_t andSize(SBA* a, SBA* b);
-
-// allocates a SBA with sufficient capacity to be used as the result in the OR or XOR op.
-// the allocated SBA has an uninitalized size, since this is set in the OR op
-// this is based on the argument SBAs' CURRENT SIZES, and not their capacities
+// allocates an SBA with sufficient capacity to be used as the result in the OR or XOR op.
+// the allocated SBA has an uninitalized size, since this is set in the OR op.
+// this is based on the argument SBAs' CURRENT SIZES, and not their capacities.
 SBA* allocSBA_or(SBA*, SBA*);
 
-// ORs a and b, and places the result in r
-// r->capacity >= a->size + b->size. 
-// Unlike the AND op, r can't be a or b.
-// if exclusive is nonzero, XOR is used instead
-void orBits(SBA* r, SBA* a, SBA* b, uint8_t exclusive);
-
-// returns the number of bits on in a OR b. if exclusive is nonzero, XOR is used instead
-uint32_t orSize(SBA* a, SBA* b, uint8_t exclusive);
+// If size_only is false:
+//      ORs a and b, and places the result in r, an SBA pointer.
+//      r->capacity >= a->size + b->size. 
+//      Unlike the AND op, r can't be a or b.
+// If size_only is true:
+//      ORs a and b, and writes the number of bits in common to the uint32_t* r.
+// if exclusive is true, XOR is used instead of OR.
+void orBits(void* r, SBA* a, SBA* b, uint8_t exclusive, uint8_t size_only);
 
 // increases a by bitshifting n places
 void rshift(SBA* a, uint32_t n);
@@ -74,7 +74,7 @@ void lshift(SBA* a, uint32_t n);
 // returns 1 if they are equal, and 0 if they are not equal
 uint8_t equal(SBA* a, SBA* b);
 
-// allocates a SBA with sufficient capacity to be used as the destination in the cp operation.
+// allocates an SBA with sufficient capacity to be used as the destination in the cp operation.
 // this is based on the argument SBA's CURRENT SIZE, and not its capacity
 SBA* allocSBA_cp(SBA* src);
 
