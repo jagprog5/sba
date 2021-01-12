@@ -19,7 +19,11 @@ class TestSBA(unittest.TestCase):
             a = SBA(2, 4, 6.2, 8)
         with self.assertRaises(SBAException):
             a = SBA(-4, -3, -2, -1)
-        a = SBA(blank_size = 5)
+        with self.assertRaises(SBAException):
+            a = SBA(1, 1, 1, 1)
+        with self.assertRaises(SBAException):
+            a = SBA(1, 2, 3, 0xFFFFFFFF + 1)
+        a = SBA(blank_cap = 5)
         self.assertEqual(a.capacity, 5)
     
     def test_set_bit(self):

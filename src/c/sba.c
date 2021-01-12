@@ -37,7 +37,8 @@ void printSBA(SBA* a) {
     if (a->size != 0) {
         uint_fast32_t amount = 0;
         for (uint_fast32_t i = 0; i < a->size - 1; ++i) {
-            amount += 2 + log10f(a->indices[i]);
+            uint_fast32_t val = a->indices[i];
+            amount += 2 + log10f(val == 0 ? 1 : a->indices[i]);
         }
         for (uint_fast32_t j = 0; j < amount; ++j) {
             putchar(' ');
