@@ -61,6 +61,16 @@ class TestSBA(unittest.TestCase):
             self.assertTrue(ln >= 0 and ln <= len(a) and all(b[i] in a for i in range(ln)))
         self.assertEqual(a, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
     
+    def test_slicing(self):
+        a = SBA(1, 2, 10, 50, 200, 250)
+        self.assertEqual(a[:], a)
+        self.assertEqual(a[10:11], [10])
+        self.assertEqual(a[0:3], [1, 2])
+        self.assertEqual(a[50:300], [50, 200, 250])
+        self.assertEqual(a[10:0], a[0:10])
+        self.assertEqual(a[200:], [200, 250])
+        self.assertEqual(a[:3], [1, 2])
+    
     def test_ops(self):
         a = SBA(1, 2)
         b = SBA(2, 3)
