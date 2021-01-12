@@ -42,6 +42,10 @@ void turnOff(SBA* a, uint32_t bitIndex);
 // returns bool state of bit at index
 EXPORT uint8_t getBit(SBA* a, uint32_t bitIndex);
 
+// start_inclusive must be <= stop_exclusive
+// r is the result SBA.
+EXPORT void getSection(SBA* r, SBA* in, uint32_t start_inclusive, uint32_t stop_exclusive);
+
 // turns bits in a to off that are also contained in rm
 EXPORT void turnOffAll(SBA* a, SBA* rm);
 

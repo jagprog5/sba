@@ -62,6 +62,11 @@ class SBA(c.Structure):
             SBA.getBit.restype = c.c_uint8
             SBA.getBit.argtype = [c.POINTER(SBA), c.c_uint32]
 
+            # getSection
+            SBA.getSection = SBA.sba_lib.getSection
+            SBA.getSection.restype = None
+            SBA.getSection.argtype = [c.POINTER(SBA)] * 2 + [c.c_uint32] * 3
+
             # turnOffAll
             SBA.turnOffAll = SBA.sba_lib.turnOffAll
             SBA.turnOffAll.restype = None
@@ -249,6 +254,8 @@ class SBA(c.Structure):
             raise TypeError(str(type(other)) + " not supported for >> or << ops.")
     
     def _check_index(self, index: int) -> int:
+        if not isinstance(index, int):
+            raise SBAException("Index must be an int.")
         if index >= self.size:
             raise SBAException("Index out of bounds.")
         if index < 0:
@@ -261,9 +268,26 @@ class SBA(c.Structure):
         '''
         Returns the index of the i-th ON bit.
         Not to be confused with get_bit
+
+        If a slice is passed:
+            - Returns the ON bits within the specified range (inclusive start, exclusive stop)
+            - The specified step is ignored (uses 1)
+            - e.g SBA(1, 2, 10, 15)[2, 15] -> SBA(2, 10)
         '''
-        return self.indices[self._check_index(index)]
-    
+        if isinstance(index, slice):
+            start = 0 if index.start is None else index.start
+            stop = self.indices[self.size - 1] + 1 if index.stop is None else index.stop
+            if start > stop:
+                tmp = start
+                start = stop
+                stop = tmp
+            if start < 0:
+                start = 0
+            r = SBA(blank_size=stop-start)
+            SBA.getSection(c.byref(r), c.byref(self), c.c_uint32(start), c.c_uint32(stop))
+            return r
+        else:
+            return self.indices[self._check_index(index)]
     
     def get_bit(self, index: int) -> bool:
         '''
