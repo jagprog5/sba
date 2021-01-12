@@ -37,7 +37,8 @@ void printSBA(SBA* a) {
     if (a->size != 0) {
         uint_fast32_t amount = 0;
         for (uint_fast32_t i = 0; i < a->size - 1; ++i) {
-            amount += 2 + log10f(a->indices[i]);
+            uint_fast32_t val = a->indices[i];
+            amount += 2 + log10f(val == 0 ? 1 : a->indices[i]);
         }
         for (uint_fast32_t j = 0; j < amount; ++j) {
             putchar(' ');
@@ -116,6 +117,48 @@ uint8_t getBit(SBA* a, uint32_t bitIndex) {
         }
     }
     return 0;
+}
+
+SBA* allocSBA_getSlice(uint32_t start_inclusive, uint32_t stop_exclusive) {
+    return _allocSBA_nosetsize(stop_exclusive - start_inclusive);
+}
+
+void getSection(SBA* r, SBA* in, uint32_t start_inclusive, uint32_t stop_exclusive) {
+    uint_fast32_t r_size = 0;
+    if (in->size == 0) {
+        goto end;
+    }
+    int_fast32_t left = 0;
+    int_fast32_t right = (int_fast32_t)in->size - 1;
+    int_fast32_t middle;
+    uint_fast32_t mid_val;
+    while (left <= right) {
+        middle = (right + left) / 2;
+        mid_val = in->indices[middle];
+        if (mid_val == start_inclusive) {
+            break;
+        } else if (mid_val < start_inclusive) {
+            left = middle + 1;
+        } else {
+            right = middle - 1;
+        }
+    }
+    if (start_inclusive > mid_val) {
+        middle += 1;
+    }
+
+    uint_fast32_t in_size = in->size;
+    while (mid_val < stop_exclusive) {
+        r->indices[r_size++] = mid_val;
+        middle += 1;
+        if (middle >= in_size) {
+            break; // ran off end
+        }
+        mid_val = in->indices[middle];
+    }
+
+    end:
+    r->size = r_size;
 }
 
 void turnOffAll(SBA* a, SBA* rm) {

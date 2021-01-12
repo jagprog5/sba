@@ -19,7 +19,11 @@ class TestSBA(unittest.TestCase):
             a = SBA(2, 4, 6.2, 8)
         with self.assertRaises(SBAException):
             a = SBA(-4, -3, -2, -1)
-        a = SBA(blank_size = 5)
+        with self.assertRaises(SBAException):
+            a = SBA(1, 1, 1, 1)
+        with self.assertRaises(SBAException):
+            a = SBA(1, 2, 3, 0xFFFFFFFF + 1)
+        a = SBA(blank_cap = 5)
         self.assertEqual(a.capacity, 5)
     
     def test_set_bit(self):
@@ -60,6 +64,16 @@ class TestSBA(unittest.TestCase):
             ln = len(b)
             self.assertTrue(ln >= 0 and ln <= len(a) and all(b[i] in a for i in range(ln)))
         self.assertEqual(a, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    
+    def test_slicing(self):
+        a = SBA(1, 2, 10, 50, 200, 250)
+        self.assertEqual(a[:], a)
+        self.assertEqual(a[10:11], [10])
+        self.assertEqual(a[0:3], [1, 2])
+        self.assertEqual(a[50:300], [50, 200, 250])
+        self.assertEqual(a[10:0], a[0:10])
+        self.assertEqual(a[200:], [200, 250])
+        self.assertEqual(a[:3], [1, 2])
     
     def test_ops(self):
         a = SBA(1, 2)
@@ -134,7 +148,7 @@ if __name__ == "__main__":
         sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src" / "py"))
     from sba import *
 
-    SBA() # give lib import error rather than failed tests
+    SBA._init_lib_if_needed() # give lib import error rather than failed tests
     unittest.main()
 
 
