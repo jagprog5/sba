@@ -1,4 +1,4 @@
-# Sparse Bit Arrays
+# Sparse Bit Array
 
 A sparse bit array stores the indices of the bits that are ON for an arbitrarily long array.
 
@@ -38,14 +38,9 @@ array([ 0,  3, 40], dtype=uint32)
 >>> SBA.encode_linear(1.0, 3, 100)
 [97, 98, 99]
 ```
-
-## Installation: pypi
-
-The package is a source distribution, not a binary distribution. Windows users may need to do [this](https://docs.microsoft.com/en-us/answers/questions/136595/error-microsoft-visual-c-140-or-greater-is-require.html).
-
-
+## Installation: PyPI
 ```bash
-pip install sparse-bit-arrays
+pip install sparse-bit-array
 ```
 ## Installation: GitHub
 ```bash
@@ -55,5 +50,5 @@ make install
 ```
 The installation can then be tested with:
 ```bash
-make test
+python3 tests/tests.py
 ```
