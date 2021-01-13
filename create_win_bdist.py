@@ -33,4 +33,14 @@ if __name__ == "__main__":
         print("wheel creation failed")
         exit(1)
     
-    print("Done.")
+    subprocess.run(["pip", "uninstall", "-y", "sparse-bit-array"])
+
+    print("Installing wheel...")
+    if subprocess.run(["pip", "install", (repo_folder / "dist").glob("*.whl").__next__()]).returncode != 0:
+        print("wheel creation failed")
+        exit(1)
+    
+    print("Testing wheel...")
+    subprocess.run(["python3", (repo_folder / "tests" / "tests.py")])
+
+
