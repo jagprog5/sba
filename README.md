@@ -7,8 +7,7 @@ This package is a C lib wrapper.
 ## Overview
 
 ```python
-from sba import *
-
+>>> from sba import *
 >>> a = SBA(0, 3, 40) # an array with the bits 0, 3, and 40 set to ON
 >>> a
 [0, 3, 40]
@@ -26,11 +25,11 @@ array([ 0,  3, 40], dtype=uint32)
 >>> a + (b >> 2)
 [0, 1, 38, 40]
 
-# Randomly flips bits OFF, where each bit has a 33% chance of remaining ON
+>>> # Randomly flips bits OFF, where each bit has a 33% chance of remaining ON
 >>> SBA(1, 2, 3, 4, 5, 6) * (1 / 3)
 [2, 5]
 
-# encodes a float value by turning 3 bits ON in an array with a total size of 100
+>>> # encodes a float value by turning 3 bits ON in an array with a total size of 100
 >>> SBA.encode_linear(0.0, 3, 100)
 [0, 1, 2]
 >>> SBA.encode_linear(0.5, 3, 100)
