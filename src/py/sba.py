@@ -6,7 +6,6 @@ import pathlib
 try:
     import numpy
 except:
-    # I don't want to have it as a dependency
     pass # No need to do conversions if numpy isn't installed
 
 class SBAException(Exception):
@@ -121,8 +120,8 @@ class SBA(c.Structure):
     def _throw_if_indices_not_valid(l, ln):
         if any(not isinstance(l[i], int) for i in range(ln)):
             raise SBAException("indices must only contain ints.")
-        if any(l[i] >= l[i+1] for i in range(ln-1)):
-            raise SBAException("indices must be in ascending order, with no duplicates.")
+        if any(l[i] <= l[i+1] for i in range(ln-1)):
+            raise SBAException("indices must be in descending order, with no duplicates.")
         if any(l[i] < 0 for i in range(ln)):
             raise SBAException("indices must only contain non-negative integers.")
         if any(l[i] > 0xFFFFFFFF for i in range(ln)):
@@ -130,18 +129,18 @@ class SBA(c.Structure):
     
     def __init__(self, *on_bits: Union[int, Iterable[int], SBA], **_special):
         """
-        Initalize an SBA. 
+        Initialize an SBA. 
         ```python
-        a = SBA(0, 2, 500)   # turn bits 0, 2, and 500 to ON.  
+        a = SBA(500, 2, 0)   # turn bits 500, 2, and 0 to ON.  
         b = SBA(a)  
-        a = SBA([0, 2, 500])  
+        a = SBA([500, 2, 0])  
 
         ```
         On initialization of an SBA, the indices are checked for validity.  
         Valid indices are:  
           - In ascending order, with no duplicates
           - Unsigned 32 bit integers
-        This can be changed with:  
+        Check behaviour can be changed with:  
 
         ```python
         SBA.disable_checking()  
@@ -195,12 +194,12 @@ class SBA(c.Structure):
         '''
         Gives indices of ON bits.  
         ```python
-        >>> a = SBA(1, 2, 10)
+        >>> a = SBA(10, 2, 1)
         >>> for i in a:
         >>>     print(i)
-        1
-        2
         10
+        2
+        1
         ```
         '''
         return SBAIterator(self)
@@ -213,22 +212,22 @@ class SBA(c.Structure):
         '''
         For a string: concatenates string of self.
         ```python
-        >>> SBA(1, 2) + " hi"
-        '[1, 2] hi'
+        >>> SBA(2, 1) + " hi"
+        '[2, 1] hi'
         ```
         For an int: Turns on the bit.
         ```python
-        >>> SBA(1, 2) + 0
-        [0, 1, 2]
+        >>> SBA(2, 1) + 0
+        [2, 1, 0]
         ```
         For an SBA: return a copy of self OR other
         ```python
-        >>> SBA(1, 2) + SBA(2, 3)
-        [1, 2, 3]
+        >>> SBA(3, 2) + SBA(2, 1)
+        [3, 2, 1]
         ```
         For a iterable of ints: adds each element, separately
-        >>> SBA(1, 2) + [0, 2, 5]
-        [0, 1, 2, 5]
+        >>> SBA(2, 1) + [5, 0, 2]
+        [5, 2, 1, 0]
         '''
         if isinstance(other, str):
             return str(self) + other
@@ -262,20 +261,20 @@ class SBA(c.Structure):
         '''
         For an int: Returns the state of the bit.
         ```python
-        >>> SBA(1, 2) * 50
+        >>> SBA(2, 1) * 50
         False
-        >>> SBA(1, 2) * 2
+        >>> SBA(2, 1) * 2
         True
         ```
         For an SBA: ANDs the bits
         ```python
-        >>> SBA(1, 2) * SBA(2, 3)
+        >>> SBA(3, 2) * SBA(2, 1)
         [2]
         ```
         For a float: returns a random subsample
         ```python
-        >>> SBA(1, 2, 3, 4, 5, 6) * (1 / 3)
-        [2, 5]
+        >>> SBA(5, 4, 3, 2, 1, 0) * (1 / 3)
+        [5, 2]
         ```
         '''
         if isinstance(other, SBA):
@@ -310,17 +309,17 @@ class SBA(c.Structure):
         '''
         For an int: Turns off the bit.
         ```python
-        >>> SBA(1, 2) - 2
+        >>> SBA(2, 1) - 2
         [1]
         ```
         For an SBA: removes all elements
         ```python
-        >>> SBA(1, 2, 3) - SBA(2, 3)
+        >>> SBA(3, 2, 1) - SBA(3, 2)
         [1]
         ```
         ```python
         For a iterable of ints: removes each element, separately
-        >>> SBA(1, 2) - [2, 0, 5]
+        >>> SBA(2, 1) - [2, 0, 5]
         [1]
         ```
         '''
@@ -344,11 +343,8 @@ class SBA(c.Structure):
             raise TypeError(str(type(other)) + " not supported for - op.")
     
     def __lshift__(self, n):
-        return self.__rshift__(-n)
-
-    def __rshift__(self, n):
         '''
-        >>> SBA(0, 2, 3) >> 2
+        >>> SBA(3, 2, 0) >> 2
         [0, 1]
         '''
         if isinstance(n, int):
@@ -356,7 +352,19 @@ class SBA(c.Structure):
             cp.shift(n)
             return cp
         else:
-            raise TypeError(str(type(other)) + " not supported for >> or << ops.")
+            raise TypeError(str(type(other)) + " not supported for << op.")
+
+    def __rshift__(self, n):
+        '''
+        >>> SBA(3, 2, 0) >> 2
+        [0, 1]
+        '''
+        if isinstance(n, int):
+            cp = self.cp()
+            cp.shift(-n)
+            return cp
+        else:
+            raise TypeError(str(type(other)) + " not supported for >> op.")
     
     def _check_index(self, index: int) -> int:
         if not isinstance(index, int):
@@ -371,36 +379,36 @@ class SBA(c.Structure):
 
     def __getitem__(self, index: Union[int, slice]) -> int:
         '''
-        Note that __getitem__ complete two totally different operation with a slice versus with an int.  
+        Note that __getitem__ completes two totally different operation with a slice versus with an int.  
 
         =-======For an int=========  
         Returns the index of the i-th ON bit.  
         Not to be confused with get_bit.
         ```python
-        >>> SBA(1, 2, 3, 4)[-2]
-        3
+        >>> SBA(4, 3, 2, 1)[-2]
+        2
         ```
         =-======For a slice========  
-        Returns the ON bits within the specified range (inclusive start, exclusive stop)  
-        The specified step is ignored (uses 1)
+        Returns the ON bits within the specified range (inclusive stop, inclusive start).  
+        The specified step is ignored (uses 1).  
         ```python
-        >>> SBA(1, 2, 10, 15)[2:15]
-        [2, 10]
+        >>> SBA(15, 10, 2, 1)[15:2]
+        [15, 10, 2]
         >>> SBA(range(0, 10000, 2))[100:110]
-        [100, 102, 104, 106, 108]
+        [110, 108, 106, 104, 102, 100]
         ```
         '''
         if isinstance(index, slice):
-            start = 0 if index.start is None else index.start
-            stop = self.indices[self.size - 1] + 1 if index.stop is None else index.stop
+            start = self.indices[0] if index.start is None else index.start
+            stop = self.indices[self.size - 1] if index.stop is None else index.stop
+            if stop < 0 or start < 0:
+                raise SBAException("start and stop are both non-negative integers.")
             if start > stop:
                 tmp = start
                 start = stop
                 stop = tmp
-            if start < 0:
-                start = 0
-            r = SBA(blank_cap=stop-start)
-            SBA.getSection(c.byref(r), c.byref(self), c.c_uint32(start), c.c_uint32(stop))
+            r = SBA(blank_cap = stop - start + 1)
+            SBA.getSection(c.byref(r), c.byref(self), c.c_uint32(stop), c.c_uint32(start))
             return r
         else:
             return self.indices[self._check_index(index)]
@@ -425,25 +433,25 @@ class SBA(c.Structure):
         Turns off the index-th ON bit, and turns on the value-th bit.  
         Not to be confused with set_bit
         ```python
-        >>> a = SBA(0, 5, 10, 15)
-        >>> a[1] = 6
+        >>> a = SBA(15, 10, 5, 0)
+        >>> a[2] = 6
         >>> a
-        [0, 6, 10, 15]
+        [15, 10, 6, 0]
         ```
         '''
         self.__delitem__(index)
-        self.set_bit(value, True)
+        self.set_bit(self._check_index(value), True)
     
     def set_bit(self, index: int, value: bool):
         '''
         Sets the value of the i-th bit
         ```python
-        >>> a = SBA(0, 5, 10, 15)
+        >>> a = SBA(15, 10, 5, 0)
         >>> a.set_bit(5, False)
         >>> a
-        [0, 10, 15]
-        >>> a.set_bit(15, True)
-        [0, 10, 15]
+        [15, 10, 0]
+        >>> a.set_bit(20, True)
+        [20, 10, 0]
         ```
         '''
         if index < 0:
@@ -451,13 +459,13 @@ class SBA(c.Structure):
         left = 0
         right = self.size - 1
         middle = 0
-        mid_val = 0xFFFFFFFF # u32 max
+        mid_val = 0 # u32 max
         while left <= right:
             middle = (right + left) // 2
             mid_val = self.indices[middle]
-            if mid_val < index:
+            if mid_val > index:
                 left = middle + 1
-            elif mid_val > index:
+            elif mid_val < index:
                 right = middle - 1
             else:
                 if not value:
@@ -465,7 +473,7 @@ class SBA(c.Structure):
                 return # skip duplicate
         if not value:
             return
-        if index > mid_val:
+        if index < mid_val:
             middle += 1
         self._lengthen_if_needed()
         ptr = c.cast(self.indices, c.c_void_p)
@@ -513,11 +521,11 @@ class SBA(c.Structure):
         Not to be confused with a normal print. 
         This prints out the raw contiguous ints allocated to the SBA, and indicates where the used mem ends.
         ```python
-        >>> a = SBA(0, 1, 2, 3)
+        >>> a = SBA(3, 2, 1, 0)
         >>> del a[0]
         >>> a.print_SBA()
             V
-        1 2 3 3
+        2 1 0 0
         ```
         '''
         SBA.printSBA(c.byref(self))
@@ -526,11 +534,11 @@ class SBA(c.Structure):
         '''
         Turns off all bits also contained in rm.
         ```python
-        >>> a = SBA(1, 2, 3)
-        >>> rm = SBA(2, 4)
+        >>> a = SBA(3, 2, 1)
+        >>> rm = SBA(4, 2)
         >>> a.turn_off_all(rm)
         >>> a
-        [1, 3]
+        [3, 1]
         ```
         '''
         SBA.turnOffAll(c.byref(self), c.byref(rm))
@@ -538,8 +546,8 @@ class SBA(c.Structure):
     def and_bits(a: SBA, b: SBA) -> SBA:
         '''
         ```python
-        >>> SBA.and_bits(SBA(1, 2, 3), SBA(2, 3, 4))
-        [2, 3]
+        >>> SBA.and_bits(SBA(3, 2, 1), SBA(4, 3, 2))
+        [3, 2]
         ```
         '''
         r = SBA(blank_cap = min(a.size, b.size))
@@ -550,7 +558,7 @@ class SBA(c.Structure):
         '''
         Returns the number of bits in a AND in b.
         ```python
-        >>> SBA.and_size(SBA(1, 2, 3), SBA(2, 3, 4))
+        >>> SBA.and_size(SBA(3, 2, 1), SBA(4, 3, 2))
         2
         '''
         r = (c.c_uint32)()
@@ -560,8 +568,8 @@ class SBA(c.Structure):
     def or_bits(a: SBA, b: SBA) -> SBA:
         '''
         ```python
-        >>> SBA.or_bits(SBA(1, 2, 3), SBA(2, 3, 4))
-        [1, 2, 3, 4]
+        >>> SBA.or_bits(SBA(3, 2, 1), SBA(4, 3, 2))
+        [4, 3, 2, 1]
         ```
         '''
         r = SBA(blank_cap = a.size + b.size)
@@ -572,7 +580,7 @@ class SBA(c.Structure):
         '''
         Returns the number of bits in a OR b.
         ```python
-        >>> SBA.or_size(SBA(1, 2, 3), SBA(2, 3, 4))
+        >>> SBA.or_size(SBA(3, 2, 1), SBA(4, 3, 2))
         4
         ```
         '''
@@ -583,8 +591,8 @@ class SBA(c.Structure):
     def xor_bits(a: SBA, b: SBA) -> SBA:
         '''
         ```python
-        >>> SBA.xor_bits(SBA(1, 2, 3), SBA(2, 3, 4))
-        [1, 4]
+        >>> SBA.xor_bits(SBA(3, 2, 1), SBA(4, 3, 2))
+        [4, 1]
         ```
         '''
         r = SBA(blank_cap = a.size + b.size)
@@ -595,7 +603,7 @@ class SBA(c.Structure):
         '''
         Returns the number of bits in a XOR b.
         ```python
-        >>> SBA.xor_bits(SBA(1, 2, 3), SBA(2, 3, 4))
+        >>> SBA.xor_bits(SBA(3, 2, 1), SBA(4, 3, 2))
         2
         ```
         '''
@@ -604,7 +612,7 @@ class SBA(c.Structure):
         return r.value
     
     def shift(self, n: int):
-        ''' Bitshift '''
+        ''' Bitshift. Positive n : increased value. '''
         if n > 0:
             SBA.lshift(c.byref(self), c.c_uint32(n))
         else:
@@ -660,27 +668,34 @@ class SBA(c.Structure):
         SBA.encodePeriodic(c.c_float(input), c.c_float(period), c.c_uint32(size), c.byref(r))
         return r
     
+
+    '''
+
+    TODO migrate everything to cython.
+
+    Requires PyArray_ENABLEFLAGS(arr, np.NPY_OWNDATA)
+
     def from_np(arr: numpy.ndarray, deep_copy=True) -> SBA:
-        '''
+        \'''
         Converts from a numpy array.
         ```python3
-        >>> arr = numpy.array([0, 2, 50], numpy.uint32)
+        >>> arr = numpy.array([50, 2, 0], numpy.uint32)
         >>> a = SBA.from_np(arr, False)
         >>> arr = None # Important!
         >>> a
-        [0, 2, 50]
+        [50, 2, 0]
         ```
         If deep_copy is True, then the returned SBA has a separate copy of the data.
 
         If deep_copy is False, then the returned SBA will be a shallow copy of the numpy array's buffer.  
         Read: Two objects sharing the same section of memory.  
         Set the input array to None after shallow copying to prevent aliasing, as this will lead to segfaults if the SBAs indices are modified to no longer be valid.  
-        '''
+        \'''
         if arr.dtype != numpy.uint32:
             raise SBAException("The numpy array must be of type uint32, try `arr.astype(np.uint32)`")
         size = arr.size
-        if SBA.do_checking and not all(arr[i] <= arr[i+1] for i in range(size-1)):
-            raise SBAException("the indices must be in ascending order")
+        if SBA.do_checking and not all(arr[i] >= arr[i+1] for i in range(size-1)):
+            raise SBAException("the indices must be in descending order")
         a = SBA(uninit=True)
         a.size = (c.c_uint32)(size)
         a.capacity = a.size
@@ -693,24 +708,25 @@ class SBA(c.Structure):
         return a
 
     def to_np(self, deep_copy=True) -> numpy.ndarray:
-        '''
+        \'''
         Converts to a numpy array.
         ```python3
-        >>> a = SBA(0, 2, 50)
+        >>> a = SBA(50, 2, 0)
         >>> arr = a.to_np(False)
         >>> a = None # Important!
         >>> arr
-        array([ 0,  2, 50], dtype=uint32)
+        array([ 50,  2, 0], dtype=uint32)
         ```
         If deep_copy is False, then the returned array will be a shallow copy of this SBA.  
         Read: Two objects sharing the same section of memory.  
         Set this SBA to None after shallow copying to prevent aliasing.
 
         If deep_copy is True, then the returned array has a separate copy of the data.
-        '''
+        \'''
         arr = numpy.frombuffer(c.cast(self.indices, c.POINTER(c.c_uint32 * self.size)).contents, dtype=numpy.uint32)
         if deep_copy:
             new_indices = (c.c_uint32 * self.size)()
             c.memmove(new_indices, self.indices, c.sizeof(c.c_uint32) * self.size)
             self.indices = c.cast(new_indices, c.POINTER(c.c_uint32))
         return arr
+    '''
