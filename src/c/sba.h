@@ -13,7 +13,7 @@
 typedef struct SBA {
     uint32_t size; // number of ON bits in the array
     uint32_t capacity; // mem currently allocated for the list
-    uint32_t* indices; // contains indices of bits that are ON.
+    uint32_t* indices; // contains indices of bits that are ON. From MSB to LSB
 } SBA;
 
 // leaves size uninitialized
@@ -42,16 +42,17 @@ void turnOff(SBA* a, uint32_t bitIndex);
 // returns bool state of bit at index
 EXPORT uint8_t getBit(SBA* a, uint32_t bitIndex);
 
-// start_inclusive must be <= stop_exclusive
-// r is the result SBA.
-EXPORT void getSection(SBA* r, SBA* in, uint32_t start_inclusive, uint32_t stop_exclusive);
+// allocates an SBA with sufficient capacity to be used as the result in the getSection function.
+// the allocated SBA has an uninitalized size, since this is set in the function.
+SBA* allocSBA_getSection(uint32_t stop_inclusive, uint32_t start_inclusive);
+
+EXPORT void getSection(SBA* r, SBA* in, uint32_t stop_inclusive, uint32_t start_inclusive);
 
 // turns bits in a to off that are also contained in rm
 EXPORT void turnOffAll(SBA* a, SBA* rm);
 
 // allocates an SBA with sufficient capacity to be used as the result in the AND op.
 // the allocated SBA has an uninitalized size, since this is set in the AND op
-// this is based on the argument SBAs' CURRENT SIZES, and not their capacities
 SBA* allocSBA_andBits(SBA*, SBA*);
 
 // If size_only is false:
@@ -63,7 +64,6 @@ EXPORT void andBits(void* r, SBA* a, SBA* b, uint8_t size_only);
 
 // allocates an SBA with sufficient capacity to be used as the result in the OR or XOR op.
 // the allocated SBA has an uninitalized size, since this is set in the OR op.
-// this is based on the argument SBAs' CURRENT SIZES, and not their capacities.
 SBA* allocSBA_or(SBA*, SBA*);
 
 // If size_only is false:
@@ -75,17 +75,17 @@ SBA* allocSBA_or(SBA*, SBA*);
 // if exclusive is true, XOR is used instead of OR.
 EXPORT void orBits(void* r, SBA* a, SBA* b, uint8_t exclusive, uint8_t size_only);
 
-// increases a by bitshifting n places
+// decreases a by bitshifting n places
 EXPORT void rshift(SBA* a, uint32_t n);
 
-// decreases a by bitshifting n places
+// increases a by bitshifting n places
 EXPORT void lshift(SBA* a, uint32_t n);
 
 // returns 1 if they are equal, and 0 if they are not equal
 EXPORT uint8_t equal(SBA* a, SBA* b);
 
 // allocates an SBA with sufficient capacity to be used as the destination in the cp operation.
-// this is based on the argument SBA's CURRENT SIZE, and not its capacity
+// the allocated SBA has an uninitalized size, since this is set in cp function.
 SBA* allocSBA_cp(SBA* src);
 
 // copies the src to the dest
@@ -93,17 +93,17 @@ SBA* allocSBA_cp(SBA* src);
 EXPORT void cp(SBA* dest, SBA* src);
 
 // randomly flips bits off
-// amount in range [0, 1], where 0 clears the list
+// amount is from 0 to 1 inclusively, where 0 clears the list
 EXPORT void subsample(SBA* a, float amount);
 
-// input in [0,1], the value to encode
-// n is the number of total bits in the SBA. n >= r->size
-// r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
+// input is from 0 to 1 inclusively, the value to encode
+// n is the number of total bits in the SBA. n >= r->capacity
+// r is an empty sba. r's size is the number of bits to turn on. r's capacity must equal it's size
 EXPORT void encodeLinear(float input, uint32_t n, SBA* r);
 
 // input is the the value to encode. it is encoded linearly, except its encoding wraps back to 0 as it approaches period
-// n is the number of total bits in the SBA. n >= r->size
-// r is an empty sba. r's size is the number of bits to turn on. r's capacity should equal it's size
+// n is the number of total bits in the SBA. n >= r->capacity
+// r is an empty sba. r's size is the number of bits to turn on. r's capacity must equal it's size
 EXPORT void encodePeriodic(float input, float period, uint32_t n, SBA* r);
 
 EXPORT void seed_rand();

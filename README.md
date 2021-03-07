@@ -2,40 +2,28 @@
 
 A sparse bit array stores the indices of the bits that are ON for an arbitrarily long array.
 
-This package is a C lib wrapper.
-
 ## Overview
 
 ```python
 >>> from sba import *
->>> a = SBA(0, 3, 40) # an array with the bits 0, 3, and 40 set to ON
+>>> a = SBA(40, 3, 0) # an array with the bits 40, 3, and 0 set to ON
 >>> a
-[0, 3, 40]
+[40, 3, 0]
 >>> a.set_bit(3, False)
 >>> a
 [0, 40]
 
->>> arr = a.to_np() # Conversion to and from numpy arrays
->>> arr
-array([ 0,  3, 40], dtype=uint32)
-
->>> b = a + [3, 2] # overloaded operators
->>> b
-[0, 2, 3, 40]
->>> a + (b >> 2)
-[0, 1, 38, 40]
-
 >>> # Randomly flips bits OFF, where each bit has a 33% chance of remaining ON
->>> SBA(1, 2, 3, 4, 5, 6) * (1 / 3)
-[2, 5]
+>>> SBA(6, 5, 4, 3, 2, 1) * (1 / 3)
+[5, 2]
 
 >>> # encodes a float value by turning 3 bits ON in an array with a total size of 100
 >>> SBA.encode_linear(0.0, 3, 100)
-[0, 1, 2]
+[2, 1, 0]
 >>> SBA.encode_linear(0.5, 3, 100)
-[49, 50, 51]
+[51, 50, 49]
 >>> SBA.encode_linear(1.0, 3, 100)
-[97, 98, 99]
+[99, 98, 97]
 ```
 ## Installation: PyPI
 ```bash
