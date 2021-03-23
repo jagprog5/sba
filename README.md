@@ -11,7 +11,7 @@ A sparse bit array stores the indices of the bits that are ON. Made in cython.
 [40 3 0]
 >>> a.set_bit(3, False)
 >>> a
-[40, 0]
+[40 0]
 
 >>> b = SBA([50, 3, 0])
 >>> a & b # overloaded ops
@@ -25,7 +25,7 @@ array([50,  3,  0], dtype=int32)
 
 >>> # Randomly flips bits OFF, where each bit has a 33% chance of remaining ON
 >>> SBA([6, 5, 4, 3, 2, 1]) * (1 / 3)
-[5, 2]
+[5 2]
 
 >>> # encodes a float value by turning 3 bits ON in an array with a total size of 100
 >>> SBA.encode_linear(0.0, 3, 100)

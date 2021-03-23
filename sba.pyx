@@ -625,6 +625,9 @@ cdef class SBA:
             else:
                 right = middle - 1
         return False
+    
+    def get_bit(self, int index) -> bint:
+        return self.getBit(index)
 
     def __mul__(SBA self, other):
         '''
