@@ -1,5 +1,8 @@
 .vscode
-sparse_bit_arrays*
-dist
 build
+dist
+sparse_bit_array.egg-info
 secrets
+*.c
+*.pyd
+*.html
