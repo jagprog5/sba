@@ -628,6 +628,12 @@ cdef class SBA:
     
     def get_bit(self, int index) -> bint:
         return self.getBit(index)
+    
+    def __contains__(SBA self, index):
+        if isinstance(index, int):
+            return self.getBit(index)
+        else:
+            return False
 
     def __mul__(SBA self, other):
         '''
