@@ -17,6 +17,7 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a - 6, [4, 2])
         self.assertEqual(a * 6, True)
         self.assertEqual(a.get_bit(6), True)
+        self.assertTrue(4 in a)
         self.assertEqual(a - 6, [4, 2])
         self.assertEqual(a - SBA([6, 2]), [4])
         self.assertEqual(a & SBA([7, 6, 2]), [6, 2])
