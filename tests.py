@@ -49,7 +49,7 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a, [4, 3, 2, 1, 0])
 
     def test_from_np(self):
-        arr = np.array([5, 2, 0], int)
+        arr = np.array([5, 2, 0], np.intc)
         a = SBA.from_np(arr, deep_copy=True)
         a[0] = 0
         self.assertEqual(a, [2, 0])

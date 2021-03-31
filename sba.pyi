@@ -7,12 +7,12 @@ class SBAException(Exception):
 
 class SBA:
     '''
-    Instatiation through __init__ does a deep copy.  
+    Instantiation through __init__ does a deep copy.  
     For zero-copy, see the factory methods.
     ```python
     >>> SBA() # empty
     []
-    >>> SBA(5) # inital capacity of 5
+    >>> SBA(5) # initial capacity of 5
     [4 3 2 1 0]
     >>> SBA(5, 2) # 5 downto 2
     [5 4 3 2]
@@ -32,7 +32,7 @@ class SBA:
         The checks include:
           - Each indice is of type int.
           - Each indice is in c int range.
-          - Indicies are in descending order, with no duplicates.
+          - Indices are in descending order, with no duplicates.
         Note that the 'check_valid' arg in factory methods can disable checking for individual calls,
         even if checking is enabled globally.  
         '''
@@ -74,13 +74,13 @@ class SBA:
     @staticmethod
     def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
         '''
-        Creates and initalizes an SBA from a numpy array.  
+        Creates and initializes an SBA from a numpy array.  
         deep_copy:  
             true: The sba gets a separate copy of the data.  
             false: The sba gets a read-only reference to the data.  
         check_valid: check that all elements are valid (descending order, no duplicates).
         ```python
-        >>> SBA.from_np(np.array([5, 2, 0]))
+        >>> SBA.from_np(np.array([5, 2, 0], np.intc)) # intc needed to work cross-platform
         [5 2 0]
         >>> a = SBA.from_np(np.array([5, 2, 0]), deep_copy=False) 
         >>> a[0] = 3 # raises exception since it's read-only.
@@ -97,7 +97,7 @@ class SBA:
     
     def print_raw(self):
         '''
-        Prints the underlying allocated memory for the indicies, and indicates where the used memory ends.
+        Prints the underlying allocated memory for the indices, and indicates where the used memory ends.
         ```python
         >>> a = SBA([5, 2, 0])
         >>> a.print_raw()
