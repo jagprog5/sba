@@ -132,17 +132,17 @@ class TestSBA(unittest.TestCase):
         a = SBA([3, 2, 1])
         b = SBA([2, 1, 0])
         self.assertEqual(a & b, [2, 1])
-        self.assertEqual(len(a & b), SBA.and_size(a, b))
+        self.assertEqual(len(a & b), SBA.and_len(a, b))
         self.assertEqual(a | b, [3, 2, 1, 0])
-        self.assertEqual(len(a | b), SBA.or_size(a, b))
+        self.assertEqual(len(a | b), SBA.or_len(a, b))
         self.assertEqual(a ^ b, [3, 0])
-        self.assertEqual(len(a ^ b), SBA.xor_size(a, b))
+        self.assertEqual(len(a ^ b), SBA.xor_len(a, b))
 
     def test_and(self):
         a = SBA(get_random_indicies())
         b = SBA(get_random_indicies())
         c = SBA.and_bits(a, b)
-        self.assertTrue(len(c) == SBA.and_size(a, b))
+        self.assertTrue(len(c) == SBA.and_len(a, b))
         for i in c:
             self.assertTrue(i in a and i in b)
             a.set_bit(i, False)
@@ -155,7 +155,7 @@ class TestSBA(unittest.TestCase):
         a = SBA(get_random_indicies())
         b = SBA(get_random_indicies())
         c = SBA.or_bits(a, b)
-        self.assertTrue(len(c) == SBA.or_size(a, b))
+        self.assertTrue(len(c) == SBA.or_len(a, b))
         for i in c:
             if i in a:
                 a.set_bit(i, False)
@@ -172,7 +172,7 @@ class TestSBA(unittest.TestCase):
         a = SBA(get_random_indicies())
         b = SBA(get_random_indicies())
         c = SBA.xor_bits(a, b)
-        self.assertTrue(len(c) == SBA.xor_size(a, b))
+        self.assertTrue(len(c) == SBA.xor_len(a, b))
         for i in c:
             if i in a:
                 a.set_bit(i, False)
