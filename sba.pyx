@@ -51,7 +51,7 @@ cdef class SBA:
         '''
         do_sba_checking = 0
     
-    def __init__(self, arg: Union[int, Iterable[int], ByteString, np.ndarray, None] = None):
+    def __init__(self, arg: Union[int, Iterable[int], ByteString, np.ndarray, None] = None, arg2: Union[int, None] = None):
         '''
         Initializations through __init__ will deep_copy the arg (if the arg is of appropriate type).  
         For zero-copy, see from_np().
@@ -59,17 +59,16 @@ cdef class SBA:
         if arg is None:
             arg = 0
         if isinstance(arg, int):
-            if arg < 0:
-                raise SBAException("Requires non-negative integer.")
-            self.set_from_capacity(arg)
-            return
-        if isinstance(arg, np.ndarray):
+            if isinstance(arg2, int):
+                self.set_from_range(arg, arg2)
+            else:
+                self.set_from_capacity(arg)
+        elif isinstance(arg, np.ndarray):
             self.set_from_np(arg)
-            return
-        if PyObject_CheckBuffer(arg):
+        elif PyObject_CheckBuffer(arg):
             self.set_from_buf(arg)
-            return
-        self.set_from_iterable(arg)
+        else:
+            self.set_from_iterable(arg)
     
     cdef _init(self, int i):
         ''' Init some members. This is used in factory methods. '''
@@ -115,19 +114,41 @@ cdef class SBA:
         ret._set_from_iterable(obj, check_valid)
         return ret
     
+    cdef inline void _range(self, int stop_inclusive, int start_inclusive):
+        '''
+        stop >= start  
+        Set [stop, stop - 1, ..., start + 1, start]
+        '''
+        cdef int i = 0
+        cdef int val = stop_inclusive
+        while val >= start_inclusive:
+            self.indices[i] = val
+            i += 1
+            val -= 1
+    
     cdef inline void _default(self):
         ''' Set [len - 1, ..., 2, 1, 0] '''
-        cdef int i = 0
-        cdef biggest_val = self.len.len - 1
-        while i < self.len.len:
-            self.indices[i] = biggest_val - i
-            i += 1
+        self._range(self.len.len - 1, 0)
+    
+    cdef set_from_range(self, int stop_inclusive, int start_inclusive):
+        '''
+        Turns on the indicies from start down to stop (start >= stop).
+        '''
+        if stop_inclusive < start_inclusive:
+            raise SBAException("stop must be >= start")
+        self._raise_if_viewing()
+        cdef int cap = stop_inclusive - start_inclusive + 1
+        self._init(cap)
+        self.indices = <int*>PyMem_Realloc(self.indices, cap * sizeof(self.indices[0]))
+        self._range(stop_inclusive, start_inclusive)
 
     cdef set_from_capacity(self, int initial_capacity = 0, bint set_default = 1):
         '''
         Replace's this SBA's data.  
         set_default: set to default value otherwise leaves uninitialized.  
         '''
+        if initial_capacity < 0:
+            raise SBAException("cap must be non-negative!")
         self._raise_if_viewing()
         self._init(initial_capacity)
         self.indices = <int*>PyMem_Realloc(self.indices, initial_capacity * sizeof(self.indices[0]))
@@ -147,8 +168,6 @@ cdef class SBA:
         Create and init an empty SBA with specified initial capacity.  
         sets the indices to a default value [len - 1, ..., 3, 2, 1, 0].  
         '''
-        if initial_capacity < 0:
-            raise SBAException("Capacity must be positive.")
         return SBA.c_from_capacity(initial_capacity, True)
 
     @staticmethod
@@ -176,7 +195,6 @@ cdef class SBA:
             raise SBAException("The numpy array doesn't have valid indices.")
         cdef int len = <int>np.PyArray_DIMS(arr)[0]
         cdef int* data = <int*>np.PyArray_DATA(arr)
-
         self._init(len)
         if deep_copy:
             self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
@@ -188,7 +206,6 @@ cdef class SBA:
     
     @staticmethod
     cdef SBA c_from_np(np.ndarray[np.int32_t, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
-        ''' cython doen't allow @staticmethod with cpdef. This is wrapped by from_np. '''
         cdef SBA ret = SBA.__new__(SBA)
         ret.set_from_np(arr, deep_copy, check_valid)
         return ret
@@ -381,6 +398,7 @@ cdef class SBA:
         self.turnOn(value)
     
     cdef SBA getSection(self, int stop_inclusive, int start_inclusive):
+        ''' stop >= start '''
         cdef SBA ret = SBA.c_from_capacity(stop_inclusive - start_inclusive + 1, False)
         ret.len.len = 0
         cdef int left = 0
