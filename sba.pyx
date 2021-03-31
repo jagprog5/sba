@@ -40,22 +40,13 @@ cdef class SBA:
 
     @staticmethod
     def enable_checking():
-        ''' This is enabled by default. On creation of an SBA, ensures that indices are valid. '''
         do_sba_checking = 1
     
     @staticmethod
     def disable_checking():
-        '''
-        Disables check that ensure that indices are valid on SBA creation.  
-        Overrides argument param 'check_valid', throughout.  
-        '''
         do_sba_checking = 0
     
-    def __init__(self, arg: Union[int, Iterable[int], ByteString, np.ndarray, None] = None, arg2: Union[int, None] = None):
-        '''
-        Initializations through __init__ will deep_copy the arg (if the arg is of appropriate type).  
-        For zero-copy, see from_np().
-        '''
+    def __init__(self, arg = None, arg2 = None):
         if arg is None:
             arg = 0
         if isinstance(arg, int):
@@ -71,7 +62,7 @@ cdef class SBA:
             self.set_from_iterable(arg)
     
     cdef _init(self, int i):
-        ''' Init some members. This is used in factory methods. '''
+        # Init some members. This is used in factory methods.
         self.views = 0
         self.cap = i
         self.len.len = i
@@ -81,11 +72,8 @@ cdef class SBA:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
     
-    def view_count(self) -> int:
-        return self.views
-    
     def set_from_iterable(self, obj: Iterable[int], bint check_valid = True):
-        ''' Replaces this SBA's data with the iterable's data. Deep-copies. '''
+        # Replaces this SBA's data with the iterable's data. Deep-copies. 
         self._raise_if_viewing()
         cdef int ln = <int>len(obj)
         if do_sba_checking and check_valid:
@@ -106,12 +94,8 @@ cdef class SBA:
     
     @staticmethod
     def from_iterable(obj: Iterable[int], bint check_valid = True) -> SBA:
-        '''
-        Deep-copy iterable to create and init SBA instance.  
-        check_valid: check that all elements are valid (integers, in int range, descending order, no duplicates).  
-        '''
         cdef SBA ret = SBA.__new__(SBA)
-        ret._set_from_iterable(obj, check_valid)
+        ret.set_from_iterable(obj, check_valid)
         return ret
     
     cdef inline void _range(self, int stop_inclusive, int start_inclusive):
@@ -127,13 +111,11 @@ cdef class SBA:
             val -= 1
     
     cdef inline void _default(self):
-        ''' Set [len - 1, ..., 2, 1, 0] '''
+        # Set [len - 1, ..., 2, 1, 0]
         self._range(self.len.len - 1, 0)
     
     cdef set_from_range(self, int stop_inclusive, int start_inclusive):
-        '''
-        Turns on the indicies from start down to stop (start >= stop).
-        '''
+        # Turns on the indicies from start down to stop (start >= stop).
         if stop_inclusive < start_inclusive:
             raise SBAException("stop must be >= start")
         self._raise_if_viewing()
@@ -141,12 +123,20 @@ cdef class SBA:
         self._init(cap)
         self.indices = <int*>PyMem_Realloc(self.indices, cap * sizeof(self.indices[0]))
         self._range(stop_inclusive, start_inclusive)
+    
+    @staticmethod
+    cdef SBA c_from_range(int stop_inclusive, int start_inclusive):
+        cdef SBA ret = SBA.__new__(SBA)
+        ret.set_from_range(stop_inclusive, start_inclusive)
+        return ret
+    
+    @staticmethod
+    def from_range(stop_inclusive: int, start_inclusive: int) -> SBA:
+        return SBA.c_from_range(stop_inclusive, start_inclusive)
 
     cdef set_from_capacity(self, int initial_capacity = 0, bint set_default = 1):
-        '''
-        Replace's this SBA's data.  
-        set_default: set to default value otherwise leaves uninitialized.  
-        '''
+        # Replace's this SBA's data.  
+        # set_default: set to default value otherwise leaves uninitialized.  
         if initial_capacity < 0:
             raise SBAException("cap must be non-negative!")
         self._raise_if_viewing()
@@ -157,17 +147,12 @@ cdef class SBA:
 
     @staticmethod
     cdef SBA c_from_capacity(int initial_capacity = 0, bint set_default = 1):
-        ''' cython doen't allow @staticmethod with cpdef. This is wrapped by from_capacity. '''
         cdef SBA ret = SBA.__new__(SBA)
         ret.set_from_capacity(initial_capacity, set_default)
         return ret
 
     @staticmethod
     def from_capacity(initial_capacity = 0) -> SBA:
-        '''
-        Create and init an empty SBA with specified initial capacity.  
-        sets the indices to a default value [len - 1, ..., 3, 2, 1, 0].  
-        '''
         return SBA.c_from_capacity(initial_capacity, True)
 
     @staticmethod
@@ -212,16 +197,10 @@ cdef class SBA:
     
     @staticmethod
     def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
-        '''
-        Creates and initalizes an SBA from a numpy array.
-        deep_copy:
-            true: The sba gets a separate copy of the data.
-            false: The sba gets a read-only reference to the data.
-        '''
         return SBA.c_from_np(np_arr, deep_copy, check_valid)
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
-        ''' Buffer protocol. Read-only '''
+        # Buffer protocol. Read-only 
         if buffer == NULL:
             raise BufferError("Buffer is NULL")
         if flags & PyBUF_WRITABLE:
@@ -258,12 +237,6 @@ cdef class SBA:
         self.views -= 1
     
     cpdef np.ndarray to_np(self, bint give_ownership = 1):
-        '''
-        Create a numpy array.
-        give_ownership:  
-            true: Makes the returned numpy array the owner of the data, and clears this SBA's reference to the data.  
-            false: The returned numpy array gets a read-only buffer to the data.
-        '''
         if not give_ownership:
             return np.frombuffer(memoryview(self), dtype=int)
 
@@ -377,28 +350,17 @@ cdef class SBA:
         return index
     
     def __delitem__(self, index):
-        ''' Turns the i-th ON bit to OFF '''
         self._raise_if_viewing()
         cdef int i = self._check_index(index)
         self.len.len -= 1
         memmove(&self.indices[i], &self.indices[i + 1], sizeof(int) * (self.len.len - i))
 
     def __setitem__(self, index: int, value: int):
-        '''
-        Turns off the index-th ON bit, and turns on the value-th bit.  
-        Not to be confused with set_bit
-        ```python
-        >>> a = SBA([15, 10, 5, 0])
-        >>> a[2] = 6
-        >>> a
-        [15 10 6 0]
-        ```
-        '''
         self.__delitem__(index)
         self.turnOn(value)
     
     cdef SBA getSection(self, int stop_inclusive, int start_inclusive):
-        ''' stop >= start '''
+        # stop >= start
         cdef SBA ret = SBA.c_from_capacity(stop_inclusive - start_inclusive + 1, False)
         ret.len.len = 0
         cdef int left = 0
@@ -427,27 +389,7 @@ cdef class SBA:
             mid_val = self.indices[middle]
         return ret
     
-    def __getitem__(self, index: Union[int, slice]) -> int:
-        '''
-        Note that __getitem__ completes two totally different operation with a slice versus with an int.  
-
-        =-======For an int=========  
-        Returns the index of the i-th ON bit.  
-        Not to be confused with get_bit.
-        ```python
-        >>> SBA([4, 3, 2, 1])[-2]
-        2
-        ```
-        =-======For a slice========  
-        Returns the ON bits within the specified range (inclusive stop, inclusive start).  
-        The specified step is ignored (uses 1).  
-        ```python
-        >>> SBA(]15, 10, 2, 1])[15:2]
-        [15 10 2]
-        >>> SBA(range(0, 10000, 2))[100:110]
-        [110 108 106 104 102 100]
-        ```
-        '''
+    def __getitem__(self, index: Union[int, slice]) -> Union[int, SBA]:
         if isinstance(index, slice):
             start = self.indices[0] if index.start is None else index.start
             stop = self.indices[len(self) - 1] if index.stop is None else index.stop
@@ -460,7 +402,6 @@ cdef class SBA:
             return self.indices[self._check_index(index)]
 
     cpdef SBA cp(self):
-        ''' Creates deep-copy. '''
         cdef SBA ret = SBA.c_from_capacity(self.len.len, 0)
         for i in range(self.len.len):
             ret.indices[i] = self.indices[i]
@@ -478,37 +419,37 @@ cdef class SBA:
         SBA._get_one(b, b_offset, b_val, b_empty)
 
     @staticmethod
-    cdef orBits(void* r, SBA a, SBA b, bint exclusive, bint size_only):
+    cdef orBits(void* r, SBA a, SBA b, bint exclusive, bint len_only):
         cdef bint a_nempty = 1
         cdef int a_offset = 0
         cdef int a_val
         cdef bint b_nempty = 1
         cdef int b_offset = 0
         cdef int b_val
-        cdef int r_size = 0
+        cdef int r_len = 0
 
         SBA._get_both(a, &a_offset, &a_val, &a_nempty, b, &b_offset, &b_val, &b_nempty)
         while a_nempty or b_nempty:
             if (a_nempty and not b_nempty) or (a_nempty and b_nempty and a_val > b_val):
-                if not size_only:
-                    (<SBA>r).indices[r_size] = a_val
-                r_size += 1
+                if not len_only:
+                    (<SBA>r).indices[r_len] = a_val
+                r_len += 1
                 SBA._get_one(a, &a_offset, &a_val, &a_nempty)
             elif (not a_nempty and b_nempty) or (a_nempty and b_nempty and a_val < b_val):
-                if not size_only:
-                    (<SBA>r).indices[r_size] = b_val
-                r_size += 1
+                if not len_only:
+                    (<SBA>r).indices[r_len] = b_val
+                r_len += 1
                 SBA._get_one(b, &b_offset, &b_val, &b_nempty)
             elif a_nempty and b_nempty and a_val == b_val:
                 if not exclusive:
-                    if not size_only:  
-                        (<SBA>r).indices[r_size] = a_val
-                    r_size += 1
+                    if not len_only:  
+                        (<SBA>r).indices[r_len] = a_val
+                    r_len += 1
                 SBA._get_both(a, &a_offset, &a_val, &a_nempty, b, &b_offset, &b_val, &b_nempty)
-        if size_only:
-            (<int*>r)[0] = r_size
+        if len_only:
+            (<int*>r)[0] = r_len
         else:
-            (<SBA>r).len.len = r_size
+            (<SBA>r).len.len = r_len
     
     @staticmethod
     def or_bits(SBA a not None, SBA b not None) -> SBA:
@@ -517,7 +458,7 @@ cdef class SBA:
         return ret
     
     @staticmethod
-    def or_size(SBA a not None, SBA b not None) -> int:
+    def or_len(SBA a not None, SBA b not None) -> int:
         cdef int ret
         SBA.orBits(<void*>&ret, a, b, 0, 1)
         return ret
@@ -529,26 +470,26 @@ cdef class SBA:
         return ret
     
     @staticmethod
-    def xor_size(SBA a not None, SBA b not None) -> int:
+    def xor_len(SBA a not None, SBA b not None) -> int:
         cdef int ret
         SBA.orBits(<void*>&ret, a, b, 1, 1)
         return ret
     
     @staticmethod
-    cdef andBits(void* r, SBA a, SBA b, bint size_only):
+    cdef andBits(void* r, SBA a, SBA b, bint len_only):
         cdef bint a_nempty = 1
         cdef int a_offset = 0
         cdef int a_val
-        cdef int a_size = a.len.len # store in case r = a
+        cdef int a_len = a.len.len # store in case r = a
         cdef bint b_nempty = 1
         cdef int b_offset = 0
         cdef int b_val
-        cdef int b_size = b.len.len # store in case r = b
-        cdef int r_size = 0
+        cdef int b_len = b.len.len # store in case r = b
+        cdef int r_len = 0
 
-        if a_size == 0 or b_size == 0:
-            if size_only:
-                (<int*>r)[0] = r_size
+        if a_len == 0 or b_len == 0:
+            if len_only:
+                (<int*>r)[0] = r_len
             return
 
         SBA._get_both(a, &a_offset, &a_val, &a_nempty, b, &b_offset, &b_val, &b_nempty)
@@ -558,14 +499,14 @@ cdef class SBA:
             elif a_val < b_val:
                 SBA._get_one(b, &b_offset, &b_val, &b_nempty)
             else: # ==
-                if not size_only:
-                    (<SBA>r).indices[r_size] = a_val
-                r_size += 1
+                if not len_only:
+                    (<SBA>r).indices[r_len] = a_val
+                r_len += 1
                 SBA._get_both(a, &a_offset, &a_val, &a_nempty, b, &b_offset, &b_val, &b_nempty)
-        if size_only:
-            (<int*>r)[0] = r_size
+        if len_only:
+            (<int*>r)[0] = r_len
         else:
-            (<SBA>r).len.len = r_size
+            (<SBA>r).len.len = r_len
     
     @staticmethod
     def and_bits(SBA a not None, SBA b not None) -> SBA:
@@ -574,32 +515,12 @@ cdef class SBA:
         return ret
     
     @staticmethod
-    def and_size(SBA a not None, SBA b not None) -> int:
+    def and_len(SBA a not None, SBA b not None) -> int:
         cdef int ret
         SBA.andBits(<void*>&ret, a, b, 1)
         return ret
     
     def __add__(self, other):
-        '''
-        For a string: concatenates string of self.
-        ```python
-        >>> SBA([2, 1]) + " hi"
-        '[2 1] hi'
-        ```
-        For an int: Turns on the bit.
-        ```python
-        >>> SBA([2, 1]) + 0
-        [2 1 0]
-        ```
-        For an SBA: return a copy of self OR other
-        ```python
-        >>> SBA([3, 2]) + SBA([2, 1])
-        [3 2 1]
-        ```
-        For a iterable of ints: adds each element, separately
-        >>> SBA([2, 1]) + [5, 0, 2]
-        [5 2 1 0]
-        '''
         if not isinstance(self, SBA): # __radd__
             if isinstance(self, str):
                 return self + str(other)
@@ -654,25 +575,6 @@ cdef class SBA:
             return False
 
     def __mul__(SBA self, other):
-        '''
-        For an int: Returns the state of the bit.
-        ```python
-        >>> SBA([2, 1]) * 50
-        False
-        >>> SBA([2, 1]) * 2
-        True
-        ```
-        For an SBA: ANDs the bits
-        ```python
-        >>> SBA([3, 2]) * SBA([2, 1])
-        [2]
-        ```
-        For a float: returns a random subsample
-        ```python
-        >>> SBA([5, 4, 3, 2, 1, 0]) * (1 / 3)
-        [5, 2]
-        ```
-        '''
         if isinstance(other, SBA):
             return SBA.and_bits(self, other)
         elif isinstance(other, int):
@@ -816,7 +718,6 @@ cdef class SBA:
             return False
     
     cpdef SBA subsample(self, float amount):
-        ''' Call SBA.seed_rand() before using this function. '''
         self._raise_if_viewing()
         cdef int check_val = <int>(amount * RAND_MAX)
         cdef int to_offset = 0
@@ -831,8 +732,10 @@ cdef class SBA:
     
     @staticmethod
     cdef SBA encodeLinear(float input, int num_on_bits, int length):
-        if input < 0:
+        if input < 0: # > 1 is ok
             raise SBAException("Can't encode a negative value in this function.")
+        if num_on_bits > length:
+            raise SBAException("The number of ON bits can't exceed the length of the array.")
         cdef SBA ret = SBA.c_from_capacity(num_on_bits, False)
         ret.len.len = num_on_bits
         cdef int start_offset = <int>roundf((length - num_on_bits) * input)
@@ -846,6 +749,10 @@ cdef class SBA:
     
     @staticmethod
     cdef SBA encodePeriodic(float input, float period, int num_on_bits, int length):
+        if input < 0:
+            input *= -1
+        if num_on_bits > length:
+            raise SBAException("The number of ON bits can't exceed the length of the array.")
         cdef SBA ret = SBA.c_from_capacity(num_on_bits, False)
         ret.len.len = num_on_bits
         cdef float progress = input / period

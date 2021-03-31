@@ -9,7 +9,7 @@ setup(
     ext_modules = cythonize("sba.pyx", annotate=True),
     include_dirs=[numpy.get_include()],
     name = "sparse-bit-array",
-    version = "1.1.0",
+    version = "1.1.1",
     author = "John Giorshev",
     description = "sparse bit array",
     long_description = long_description,
