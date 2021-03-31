@@ -31,6 +31,8 @@ class TestSBA(unittest.TestCase):
             SBA([1, 1, 1])
         with self.assertRaises(SBAException):
             SBA(['hi', 2, 1])
+        self.assertEqual(SBA(5), [4, 3, 2, 1, 0])
+        self.assertEqual(SBA(5, 2), [5, 4, 3, 2])
 
     def test_large_array(self):
         a = SBA()
