@@ -13,6 +13,7 @@ A sparse bit array stores the indices of the bits that are ON. Made in cython.
 >>> a
 [40 0]
 
+
 >>> b = SBA([50, 3, 0])
 >>> a & b # overloaded ops
 [3 0]

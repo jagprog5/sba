@@ -9,7 +9,7 @@ from cpython.object cimport Py_EQ, Py_NE, Py_LT, Py_LE, Py_GE, Py_GT
 from cpython.mem cimport PyMem_Realloc, PyMem_Free
 from libc.stdlib cimport rand, srand, RAND_MAX
 from libc.string cimport memset, memcpy, memmove
-from libc.limits cimport INT_MAX, INT_MIN
+from libc.limits cimport INT_MIN
 from typing import Iterable, Union, ByteString
 
 cdef extern from "math.h":
@@ -83,10 +83,6 @@ cdef class SBA:
             for i in range(ln - 1):
                 if obj[i] <= obj[i + 1]:
                     raise SBAException("Indices must be in descending order, with no duplicates.")
-            if obj[-1] < INT_MIN:
-                raise SBAException("Element exceeds INT_MIN")
-            if obj[0] > INT_MAX:
-                raise SBAException("Element exceeds INT_MAX")
         self._init(ln)
         self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * ln)
         for i in range(ln):
@@ -174,7 +170,7 @@ cdef class SBA:
         self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
         memcpy(self.indices, &buf[0], len * sizeof(self.indices[0]))
 
-    cdef set_from_np(self, np.ndarray[np.int32_t, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
+    cdef set_from_np(self, np.ndarray[int, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
         self._raise_if_viewing()
         if do_sba_checking and check_valid and not SBA._is_valid(arr):
             raise SBAException("The numpy array doesn't have valid indices.")
@@ -190,7 +186,7 @@ cdef class SBA:
             self.views = 1 # lock-out changing mem
     
     @staticmethod
-    cdef SBA c_from_np(np.ndarray[np.int32_t, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
+    cdef SBA c_from_np(np.ndarray[int, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
         cdef SBA ret = SBA.__new__(SBA)
         ret.set_from_np(arr, deep_copy, check_valid)
         return ret
@@ -238,7 +234,7 @@ cdef class SBA:
     
     cpdef np.ndarray to_np(self, bint give_ownership = 1):
         if not give_ownership:
-            return np.frombuffer(memoryview(self), dtype=int)
+            return np.frombuffer(memoryview(self), dtype=np.intc)
 
         self._raise_if_viewing()
         cdef np.npy_intp* dims = <np.npy_intp*>&self.len.ssize_t_len

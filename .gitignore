@@ -5,4 +5,5 @@ sparse_bit_array.egg-info
 secrets
 *.c
 *.pyd
+*.so
 *.html
