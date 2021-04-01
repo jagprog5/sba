@@ -2,6 +2,7 @@
 
 import unittest
 from sba import *
+from array import array
 import numpy as np
 
 def get_random_indicies(n=100):
@@ -33,11 +34,16 @@ class TestSBA(unittest.TestCase):
             SBA(['hi', 2, 1])
         self.assertEqual(SBA(5), [4, 3, 2, 1, 0])
         self.assertEqual(SBA(5, 2), [5, 4, 3, 2])
+    
+    def test_from_dense(self):
+        a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
+        self.assertEqual(SBA.from_dense(a), [2, 0])
+        self.assertEqual(SBA.from_dense(a, True), [5, 3])
 
     def test_large_array(self):
         a = SBA()
         for i in range(100000):
-            a.set_bit(i)
+            a.set_bit(i, True)
         self.assertEqual(len(a), 100000)
         self.assertEqual(a[0], 99999)
         for i in range(100000):
@@ -196,7 +202,7 @@ class TestSBA(unittest.TestCase):
             self.assertTrue(not i in a)
         for i in SBA.and_bits(a, a_cp):
             self.assertTrue(not i in rm)
-        
+
 if __name__ == "__main__":
     SBA.seed_rand()
     unittest.main()
