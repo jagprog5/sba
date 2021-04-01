@@ -1,6 +1,7 @@
-# from __future__ import annotations
-# from typing import overload
-# from typing import Iterable, Union, ByteString
+''' This stub is included for autocomplete and docstring stuff. '''
+
+import numpy
+from typing import Iterable, Union, overload
 
 class SBAException(Exception):
     pass
@@ -71,7 +72,20 @@ class SBA:
         ```
         '''
     
-    @staticmethod
+    def from_dense(buffer, reverse = False):
+        '''
+        Converts an array to an SBA.  
+        buffer is an optionally writable memoryview to a contiguous list of type short, int, long, float, or double.  
+        ```python
+        >>> from array import array
+        >>> a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
+        >>> SBA.from_dense(a)
+        [2 0]
+        >>> SBA.from_dense(a, reverse=True)
+        [5 3]
+        ```
+        '''
+    
     def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
         '''
         Creates and initializes an SBA from a numpy array.  
@@ -193,6 +207,7 @@ class SBA:
         ```
         '''
     
+    @overload
     def __add__(self, other: Union[Iterable[int], SBA]) -> SBA:
         '''
         Returns a copy of self OR other.
@@ -242,7 +257,7 @@ class SBA:
         ```
         '''
     
-    def __and__(SBA self, other):
+    def __and__(self, other):
         ''' See __mul__ '''
     
     @overload

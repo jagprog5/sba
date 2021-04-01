@@ -23,6 +23,14 @@ cdef extern from "time.h":
 cdef extern from "numpy/arrayobject.h":
     void PyArray_ENABLEFLAGS(np.ndarray arr, int flags)
 
+# https://github.com/cython/cython/issues/1772
+cdef fused const_numeric:
+    const short[:]
+    const int[:]
+    const long[:]
+    const float[:]
+    const double[:]
+
 class SBAException(Exception):
     pass
 
@@ -51,15 +59,15 @@ cdef class SBA:
             arg = 0
         if isinstance(arg, int):
             if isinstance(arg2, int):
-                self.set_from_range(arg, arg2)
+                self.setFromRange(arg, arg2)
             else:
-                self.set_from_capacity(arg)
+                self.setFromCapacity(arg, True)
         elif isinstance(arg, np.ndarray):
-            self.set_from_np(arg)
+            self.setFromNp(arg, True, True)
         elif PyObject_CheckBuffer(arg):
-            self.set_from_buf(arg)
+            self.setFromBuffer(arg)
         else:
-            self.set_from_iterable(arg)
+            self._set_from_iterable(arg)
     
     cdef _init(self, int i):
         # Init some members. This is used in factory methods.
@@ -68,13 +76,13 @@ cdef class SBA:
         self.len.len = i
         memset(&self.len.len + 1, 0, sizeof(Py_ssize_t) - sizeof(int)) # clear rest of union
     
-    cdef int _raise_if_viewing(self) except -1:
+    cdef int raiseIfViewing(self) except -1:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
     
-    def set_from_iterable(self, obj: Iterable[int], bint check_valid = True):
+    def _set_from_iterable(self, obj: Iterable[int], bint check_valid = True):
         # Replaces this SBA's data with the iterable's data. Deep-copies. 
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef int ln = <int>len(obj)
         if do_sba_checking and check_valid:
             for i in obj:
@@ -91,7 +99,7 @@ cdef class SBA:
     @staticmethod
     def from_iterable(obj: Iterable[int], bint check_valid = True) -> SBA:
         cdef SBA ret = SBA.__new__(SBA)
-        ret.set_from_iterable(obj, check_valid)
+        ret._set_from_iterable(obj, check_valid)
         return ret
     
     cdef inline void _range(self, int stop_inclusive, int start_inclusive):
@@ -110,46 +118,68 @@ cdef class SBA:
         # Set [len - 1, ..., 2, 1, 0]
         self._range(self.len.len - 1, 0)
     
-    cdef set_from_range(self, int stop_inclusive, int start_inclusive):
+    cdef setFromRange(self, int stop_inclusive, int start_inclusive):
         # Turns on the indicies from start down to stop (start >= stop).
         if stop_inclusive < start_inclusive:
             raise SBAException("stop must be >= start")
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef int cap = stop_inclusive - start_inclusive + 1
         self._init(cap)
         self.indices = <int*>PyMem_Realloc(self.indices, cap * sizeof(self.indices[0]))
         self._range(stop_inclusive, start_inclusive)
     
     @staticmethod
-    cdef SBA c_from_range(int stop_inclusive, int start_inclusive):
+    cdef SBA fromRange(int stop_inclusive, int start_inclusive):
         cdef SBA ret = SBA.__new__(SBA)
-        ret.set_from_range(stop_inclusive, start_inclusive)
+        ret.setFromRange(stop_inclusive, start_inclusive)
         return ret
     
     @staticmethod
     def from_range(stop_inclusive: int, start_inclusive: int) -> SBA:
-        return SBA.c_from_range(stop_inclusive, start_inclusive)
+        return SBA.fromRange(stop_inclusive, start_inclusive)
 
-    cdef set_from_capacity(self, int initial_capacity = 0, bint set_default = 1):
+    cdef setFromCapacity(self, int initial_capacity, bint set_default):
         # Replace's this SBA's data.  
         # set_default: set to default value otherwise leaves uninitialized.  
         if initial_capacity < 0:
             raise SBAException("cap must be non-negative!")
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         self._init(initial_capacity)
         self.indices = <int*>PyMem_Realloc(self.indices, initial_capacity * sizeof(self.indices[0]))
         if set_default:
             self._default()
 
     @staticmethod
-    cdef SBA c_from_capacity(int initial_capacity = 0, bint set_default = 1):
+    cdef SBA fromCapacity(int initial_capacity = 0, bint set_default = 1):
         cdef SBA ret = SBA.__new__(SBA)
-        ret.set_from_capacity(initial_capacity, set_default)
+        ret.setFromCapacity(initial_capacity, set_default)
         return ret
 
     @staticmethod
     def from_capacity(initial_capacity = 0) -> SBA:
-        return SBA.c_from_capacity(initial_capacity, True)
+        return SBA.fromCapacity(initial_capacity, True)
+    
+    cdef inline _increment_capacity(self):
+        # before single index added, lengthen if needed
+        if self.len.len >= self.cap: # ==
+            self.cap = self.cap + (self.cap >> 1) + 1; # cap *= 1.5 + 1, estimate for golden ratio
+            self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
+    
+    @staticmethod
+    def from_dense(const_numeric buf, bint reverse = 0):
+        cdef SBA ret = SBA.__new__(SBA) # fields default to 0
+        cdef int ln = len(buf)
+        cdef int i = ln - 1 if reverse else 0
+        while i > -1 if reverse else i < ln:
+            if buf[i] != 0:
+                ret._increment_capacity()
+                ret.indices[ret.len.len] = i if reverse else ln - i - 1
+                ret.len.len += 1
+            if reverse:
+                i -= 1
+            else:
+                i += 1
+        return ret
 
     @staticmethod
     cdef inline bint _is_valid(const int[:] arr):
@@ -161,8 +191,8 @@ cdef class SBA:
             i += 1
         return 1
 
-    cdef set_from_buf(self, const int[:] buf):
-        self._raise_if_viewing()
+    cdef setFromBuffer(self, const int[:] buf):
+        self.raiseIfViewing()
         if do_sba_checking and not SBA._is_valid(buf):
             raise SBAException("The buffer doesn't have valid indices.")
         cdef int len = <int>buf.shape[0]
@@ -170,8 +200,8 @@ cdef class SBA:
         self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
         memcpy(self.indices, &buf[0], len * sizeof(self.indices[0]))
 
-    cdef set_from_np(self, np.ndarray[int, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
-        self._raise_if_viewing()
+    cdef setFromNp(self, np.ndarray[int, ndim=1] arr, bint deep_copy, bint check_valid):
+        self.raiseIfViewing()
         if do_sba_checking and check_valid and not SBA._is_valid(arr):
             raise SBAException("The numpy array doesn't have valid indices.")
         cdef int len = <int>np.PyArray_DIMS(arr)[0]
@@ -186,14 +216,14 @@ cdef class SBA:
             self.views = 1 # lock-out changing mem
     
     @staticmethod
-    cdef SBA c_from_np(np.ndarray[int, ndim=1] arr, bint deep_copy = 1, bint check_valid = 1):
+    cdef SBA fromNp(np.ndarray[int, ndim=1] arr, bint deep_copy, bint check_valid):
         cdef SBA ret = SBA.__new__(SBA)
-        ret.set_from_np(arr, deep_copy, check_valid)
+        ret.setFromNp(arr, deep_copy, check_valid)
         return ret
     
     @staticmethod
     def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
-        return SBA.c_from_np(np_arr, deep_copy, check_valid)
+        return SBA.fromNp(np_arr, deep_copy, check_valid)
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
         # Buffer protocol. Read-only 
@@ -232,11 +262,11 @@ cdef class SBA:
     def __releasebuffer__(self, Py_buffer *buffer):
         self.views -= 1
     
-    cpdef np.ndarray to_np(self, bint give_ownership = 1):
+    cdef np.ndarray toNp(self, bint give_ownership):
         if not give_ownership:
             return np.frombuffer(memoryview(self), dtype=np.intc)
 
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef np.npy_intp* dims = <np.npy_intp*>&self.len.ssize_t_len
         cdef np.ndarray arr = np.PyArray_SimpleNewFromData(1, dims, np.NPY_INT, self.indices)
         PyArray_ENABLEFLAGS(arr, np.NPY_ARRAY_OWNDATA)
@@ -245,26 +275,21 @@ cdef class SBA:
         self.len.len = 0
         return arr
     
+    def to_np(self, give_ownership = True):
+        return self.toNp(give_ownership)
+    
     def __dealloc__(self):
         if self.views == 0: # owner?
             PyMem_Free(self.indices)
     
     # =========================================================================================
 
-    cdef shorten(self):
-        self.cap = self.len.len
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
+    cdef inline _shorten_if_needed(self):
+        if self.len.len < self.cap >> 1:
+            self.cap = self.len.len
+            self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
 
-    cdef shorten_if_needed(self):
-        if self.len.len < self.cap // 2:
-            self.shorten()
-    
-    cdef lengthen_if_needed(self):
-        if self.len.len >= self.cap: # ==
-            self.cap = self.cap + (self.cap >> 1) + 1; # cap *= 1.5 + 1, estimate for golden ratio
-            self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
-
-    cpdef print_raw(self):
+    cdef printRaw(self):
         cdef int amount = 0
         cdef int val
         if self.len.len != 0:
@@ -277,6 +302,9 @@ cdef class SBA:
         for i in range(self.cap):
             print(str(self.indices[i]) + " ", end='')
         print('')
+
+    def print_raw(self):
+        self.printRaw()
     
     def __repr__(self):
         return "[" + " ".join([str(self.indices[i]) for i in range(self.len.len)]) + "]"
@@ -288,13 +316,13 @@ cdef class SBA:
         return self.len.len
     
     cdef turnOn(self, int index):
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle = 0
         cdef int mid_val = INT_MIN
         while left <= right:
-            middle = (right + left) // 2
+            middle = (right + left) >> 1
             mid_val = self.indices[middle]
             if mid_val > index:
                 left = middle + 1
@@ -306,37 +334,37 @@ cdef class SBA:
         if index < mid_val:
             middle += 1
 
-        self.lengthen_if_needed()
+        self._increment_capacity()
         memmove(self.indices + middle + 1, self.indices + middle, (self.len.len - middle) * sizeof(self.indices[0]))
         self.len.len += 1
         self.indices[middle] = index
     
     cdef turnOff(self, int index):
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle = 0
         cdef int mid_val
         while left <= right:
-            middle = (right + left) // 2
+            middle = (right + left) >> 1
             mid_val = self.indices[middle]
             if mid_val == index:
                 self.len.len -= 1
                 memmove(self.indices + middle, self.indices + middle + 1, (self.len.len - middle) * sizeof(self.indices[0]))
-                self.shorten_if_needed()
+                self._shorten_if_needed()
                 return
             elif mid_val > index:
                 left = middle + 1
             else:
                 right = middle - 1
     
-    cpdef set_bit(self, int index, bint state=1):
+    def set_bit(self, index: int, state: bool):
         if state:
             self.turnOn(index)
         else:
             self.turnOff(index)
-    
-    cdef int _check_index(self, int index) except -1:
+
+    cdef int checkIndex(self, int index) except -1:
         if index >= self.len.len:
             raise SBAException("Index out of bounds.")
         if index < 0:
@@ -346,8 +374,8 @@ cdef class SBA:
         return index
     
     def __delitem__(self, index):
-        self._raise_if_viewing()
-        cdef int i = self._check_index(index)
+        self.raiseIfViewing()
+        cdef int i = self.checkIndex(index)
         self.len.len -= 1
         memmove(&self.indices[i], &self.indices[i + 1], sizeof(int) * (self.len.len - i))
 
@@ -357,14 +385,14 @@ cdef class SBA:
     
     cdef SBA getSection(self, int stop_inclusive, int start_inclusive):
         # stop >= start
-        cdef SBA ret = SBA.c_from_capacity(stop_inclusive - start_inclusive + 1, False)
+        cdef SBA ret = SBA.fromCapacity(stop_inclusive - start_inclusive + 1, False)
         ret.len.len = 0
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle
         cdef int mid_val
         while left <= right:
-            middle = (right + left) // 2
+            middle = (right + left) >> 1
             mid_val = self.indices[middle]
             if mid_val == stop_inclusive:
                 break
@@ -395,10 +423,10 @@ cdef class SBA:
                 stop = tmp
             return self.getSection(stop, start)
         else:
-            return self.indices[self._check_index(index)]
+            return self.indices[self.checkIndex(index)]
 
     cpdef SBA cp(self):
-        cdef SBA ret = SBA.c_from_capacity(self.len.len, 0)
+        cdef SBA ret = SBA.fromCapacity(self.len.len, 0)
         for i in range(self.len.len):
             ret.indices[i] = self.indices[i]
         return ret
@@ -449,7 +477,7 @@ cdef class SBA:
     
     @staticmethod
     def or_bits(SBA a not None, SBA b not None) -> SBA:
-        cdef SBA ret = SBA.c_from_capacity(a.len.len + b.len.len, False)
+        cdef SBA ret = SBA.fromCapacity(a.len.len + b.len.len, False)
         SBA.orBits(<void*>ret, a, b, 0, 0)
         return ret
     
@@ -461,7 +489,7 @@ cdef class SBA:
     
     @staticmethod
     def xor_bits(SBA a not None, SBA b not None) -> SBA:
-        cdef SBA ret = SBA.c_from_capacity(a.len.len + b.len.len, False)
+        cdef SBA ret = SBA.fromCapacity(a.len.len + b.len.len, False)
         SBA.orBits(<void*>ret, a, b, 1, 0)
         return ret
     
@@ -506,7 +534,7 @@ cdef class SBA:
     
     @staticmethod
     def and_bits(SBA a not None, SBA b not None) -> SBA:
-        cdef SBA ret = SBA.c_from_capacity(min(a.len.len, b.len.len), False)
+        cdef SBA ret = SBA.fromCapacity(min(a.len.len, b.len.len), False)
         SBA.andBits(<void*>ret, a, b, 0)
         return ret
     
@@ -551,7 +579,7 @@ cdef class SBA:
         cdef int middle
         cdef int mid_val
         while left <= right:
-            middle = (right + left) // 2
+            middle = (right + left) >> 1
             mid_val = self.indices[middle]
             if mid_val == index:
                 return True
@@ -587,7 +615,7 @@ cdef class SBA:
         return SBA.xor_bits(self, other)
     
     cdef turnOffAll(self, SBA rm):
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef int a_from = 0
         cdef int a_to = 0
         cdef int a_val
@@ -608,7 +636,7 @@ cdef class SBA:
             a_to += 1
             a_from += 1
         self.len.len = a_to
-        self.shorten_if_needed()
+        self._shorten_if_needed()
 
     def turn_off_all(self, SBA rm not None):
         self.turnOffAll(rm)
@@ -651,7 +679,7 @@ cdef class SBA:
             raise TypeError(str(type(other)) + " not supported for - op.")
     
     cpdef shift(self, int n):
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         for i in range(self.len.len):
             self.indices[i] += n
         return self
@@ -714,7 +742,7 @@ cdef class SBA:
             return False
     
     cpdef SBA subsample(self, float amount):
-        self._raise_if_viewing()
+        self.raiseIfViewing()
         cdef int check_val = <int>(amount * RAND_MAX)
         cdef int to_offset = 0
         cdef int from_offset = 0
@@ -732,7 +760,7 @@ cdef class SBA:
             raise SBAException("Can't encode a negative value in this function.")
         if num_on_bits > length:
             raise SBAException("The number of ON bits can't exceed the length of the array.")
-        cdef SBA ret = SBA.c_from_capacity(num_on_bits, False)
+        cdef SBA ret = SBA.fromCapacity(num_on_bits, False)
         ret.len.len = num_on_bits
         cdef int start_offset = <int>roundf((length - num_on_bits) * input)
         for i in range(num_on_bits):
@@ -749,7 +777,7 @@ cdef class SBA:
             input *= -1
         if num_on_bits > length:
             raise SBAException("The number of ON bits can't exceed the length of the array.")
-        cdef SBA ret = SBA.c_from_capacity(num_on_bits, False)
+        cdef SBA ret = SBA.fromCapacity(num_on_bits, False)
         ret.len.len = num_on_bits
         cdef float progress = input / period
         progress = progress - <int>progress
@@ -773,5 +801,3 @@ cdef class SBA:
     @staticmethod
     def encode_periodic(float input, float period, int num_on_bits, int size):
         return SBA.encodePeriodic(input, period, num_on_bits, size)
-                
-
