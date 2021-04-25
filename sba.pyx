@@ -10,7 +10,7 @@ from cpython.mem cimport PyMem_Realloc, PyMem_Free
 from libc.stdlib cimport rand, srand, RAND_MAX
 from libc.string cimport memset, memcpy, memmove
 from libc.limits cimport INT_MIN
-from typing import Iterable, Union, ByteString
+from typing import Iterable, Union, Callable
 
 cdef extern from "math.h":
     float floorf(float)
@@ -23,7 +23,6 @@ cdef extern from "time.h":
 cdef extern from "numpy/arrayobject.h":
     void PyArray_ENABLEFLAGS(np.ndarray arr, int flags)
 
-# https://github.com/cython/cython/issues/1772
 cdef fused const_numeric:
     const short[:]
     const int[:]
@@ -119,7 +118,7 @@ cdef class SBA:
         self._range(self.len.len - 1, 0)
     
     cdef setFromRange(self, int stop_inclusive, int start_inclusive):
-        # Turns on the indicies from start down to stop (start >= stop).
+        # Turns on the indicies from start downto stop (start >= stop).
         if stop_inclusive < start_inclusive:
             raise SBAException("stop must be >= start")
         self.raiseIfViewing()
@@ -159,20 +158,19 @@ cdef class SBA:
     def from_capacity(initial_capacity = 0) -> SBA:
         return SBA.fromCapacity(initial_capacity, True)
     
-    cdef inline _increment_capacity(self):
-        # before single index added, lengthen if needed
+    cdef inline _increment_capacity_if_needed(self):
         if self.len.len >= self.cap: # ==
-            self.cap = self.cap + (self.cap >> 1) + 1; # cap *= 1.5 + 1, estimate for golden ratio
+            self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
             self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
     
     @staticmethod
-    def from_dense(const_numeric buf, bint reverse = 0):
+    def from_dense(const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
         cdef SBA ret = SBA.__new__(SBA) # fields default to 0
         cdef int ln = len(buf)
         cdef int i = ln - 1 if reverse else 0
         while i > -1 if reverse else i < ln:
-            if buf[i] != 0:
-                ret._increment_capacity()
+            if buf[i] != 0 if filter is None else filter(buf[i]):
+                ret._increment_capacity_if_needed()
                 ret.indices[ret.len.len] = i if reverse else ln - i - 1
                 ret.len.len += 1
             if reverse:
@@ -334,7 +332,7 @@ cdef class SBA:
         if index < mid_val:
             middle += 1
 
-        self._increment_capacity()
+        self._increment_capacity_if_needed()
         memmove(self.indices + middle + 1, self.indices + middle, (self.len.len - middle) * sizeof(self.indices[0]))
         self.len.len += 1
         self.indices[middle] = index
@@ -358,13 +356,13 @@ cdef class SBA:
             else:
                 right = middle - 1
     
-    def set_bit(self, index: int, state: bool):
+    def set(self, index: int, state: bool):
         if state:
             self.turnOn(index)
         else:
             self.turnOff(index)
 
-    cdef int checkIndex(self, int index) except -1:
+    cdef int _checkIndex(self, int index) except -1:
         if index >= self.len.len:
             raise SBAException("Index out of bounds.")
         if index < 0:
@@ -375,7 +373,7 @@ cdef class SBA:
     
     def __delitem__(self, index):
         self.raiseIfViewing()
-        cdef int i = self.checkIndex(index)
+        cdef int i = self._checkIndex(index)
         self.len.len -= 1
         memmove(&self.indices[i], &self.indices[i + 1], sizeof(int) * (self.len.len - i))
 
@@ -417,13 +415,9 @@ cdef class SBA:
         if isinstance(index, slice):
             start = self.indices[0] if index.start is None else index.start
             stop = self.indices[len(self) - 1] if index.stop is None else index.stop
-            if start > stop:
-                tmp = start
-                start = stop
-                stop = tmp
-            return self.getSection(stop, start)
+            return self.get(stop, start)
         else:
-            return self.indices[self.checkIndex(index)]
+            return self.indices[self._checkIndex(index)]
 
     cpdef SBA cp(self):
         cdef SBA ret = SBA.fromCapacity(self.len.len, 0)
@@ -476,25 +470,25 @@ cdef class SBA:
             (<SBA>r).len.len = r_len
     
     @staticmethod
-    def or_bits(SBA a not None, SBA b not None) -> SBA:
+    def orb(SBA a not None, SBA b not None) -> SBA:
         cdef SBA ret = SBA.fromCapacity(a.len.len + b.len.len, False)
         SBA.orBits(<void*>ret, a, b, 0, 0)
         return ret
     
     @staticmethod
-    def or_len(SBA a not None, SBA b not None) -> int:
+    def orl(SBA a not None, SBA b not None) -> int:
         cdef int ret
         SBA.orBits(<void*>&ret, a, b, 0, 1)
         return ret
     
     @staticmethod
-    def xor_bits(SBA a not None, SBA b not None) -> SBA:
+    def xorb(SBA a not None, SBA b not None) -> SBA:
         cdef SBA ret = SBA.fromCapacity(a.len.len + b.len.len, False)
         SBA.orBits(<void*>ret, a, b, 1, 0)
         return ret
     
     @staticmethod
-    def xor_len(SBA a not None, SBA b not None) -> int:
+    def xorl(SBA a not None, SBA b not None) -> int:
         cdef int ret
         SBA.orBits(<void*>&ret, a, b, 1, 1)
         return ret
@@ -533,13 +527,13 @@ cdef class SBA:
             (<SBA>r).len.len = r_len
     
     @staticmethod
-    def and_bits(SBA a not None, SBA b not None) -> SBA:
+    def andb(SBA a not None, SBA b not None) -> SBA:
         cdef SBA ret = SBA.fromCapacity(min(a.len.len, b.len.len), False)
         SBA.andBits(<void*>ret, a, b, 0)
         return ret
     
     @staticmethod
-    def and_len(SBA a not None, SBA b not None) -> int:
+    def andl(SBA a not None, SBA b not None) -> int:
         cdef int ret
         SBA.andBits(<void*>&ret, a, b, 1)
         return ret
@@ -555,15 +549,15 @@ cdef class SBA:
             return str(self) + other
         elif isinstance(other, int):
             cp = self.cp()
-            cp.set_bit(other, True)
+            cp.turnOn(<int>other)
             return cp
         elif isinstance(other, SBA):
-            return SBA.or_bits(self, other)
+            return SBA.orb(self, other)
         elif hasattr(other, "__getitem__"):
             cp = self.cp()
             for i in other:
                 if isinstance(i, int):
-                    cp.set_bit(i, True)
+                    cp.turnOn(<int>i)
                 else:
                     raise TypeError("for + op, all elements in a list must be integers")
             return cp
@@ -589,8 +583,15 @@ cdef class SBA:
                 right = middle - 1
         return False
     
-    def get_bit(self, int index) -> bint:
-        return self.getBit(index)
+    def get(self, index1, index2 = None) -> Union[bool, SBA]:
+        if index2 is None:
+            return self.getBit(index1)
+        else:
+            if index2 > index1:
+                tmp = index2
+                index2 = index1
+                index1 = tmp
+            return self.getSection(index1, index2)
     
     def __contains__(SBA self, index):
         if isinstance(index, int):
@@ -600,7 +601,7 @@ cdef class SBA:
 
     def __mul__(SBA self, other):
         if isinstance(other, SBA):
-            return SBA.and_bits(self, other)
+            return SBA.andb(self, other)
         elif isinstance(other, int):
             return self.getBit(other)
         elif isinstance(other, float):
@@ -612,9 +613,9 @@ cdef class SBA:
         return self.__add__(other)
     
     def __xor__(SBA self, SBA other):
-        return SBA.xor_bits(self, other)
+        return SBA.xorb(self, other)
     
-    cdef turnOffAll(self, SBA rm):
+    cpdef rm(self, SBA rm):
         self.raiseIfViewing()
         cdef int a_from = 0
         cdef int a_to = 0
@@ -637,9 +638,7 @@ cdef class SBA:
             a_from += 1
         self.len.len = a_to
         self._shorten_if_needed()
-
-    def turn_off_all(self, SBA rm not None):
-        self.turnOffAll(rm)
+        return self
     
     def __sub__(self, other):
         '''
@@ -661,17 +660,17 @@ cdef class SBA:
         '''
         if isinstance(other, int):
             cp = self.cp()
-            cp.set_bit(other, False)
+            cp.turnOff(<int>other)
             return cp
         elif isinstance(other, SBA):
             cp = self.cp()
-            cp.turn_off_all(other)
+            cp.rm(other)
             return cp
         elif hasattr(other, "__getitem__"):
             cp = self.cp()
             for i in other:
                 if isinstance(i, int):
-                    cp.set_bit(i, False)
+                    cp.turnOff(<int>i)
                 else:
                     raise TypeError("for - op, all elements in a list must be integers")
             return cp

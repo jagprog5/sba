@@ -4,10 +4,11 @@ import unittest
 from sba import *
 from array import array
 import numpy as np
+from time import time
 
-def get_random_indicies(n=100):
-    ''' at most n elements '''
-    l = list(dict.fromkeys([SBA.rand_int() % 100 for i in range(n)]))
+def get_random_indicies(n=100,m=100):
+    ''' at most n elements from m-1 to -m '''
+    l = list(dict.fromkeys([SBA.rand_int() % m - (m >> 1) for i in range(n)]))
     l.sort(reverse=True)
     return l
 
@@ -17,7 +18,7 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a + 3, [6, 4, 3, 2])
         self.assertEqual(a - 6, [4, 2])
         self.assertEqual(a * 6, True)
-        self.assertEqual(a.get_bit(6), True)
+        self.assertEqual(a.get(6), True)
         self.assertTrue(4 in a)
         self.assertEqual(a - 6, [4, 2])
         self.assertEqual(a - SBA([6, 2]), [4])
@@ -39,15 +40,16 @@ class TestSBA(unittest.TestCase):
         a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
         self.assertEqual(SBA.from_dense(a), [2, 0])
         self.assertEqual(SBA.from_dense(a, True), [5, 3])
+        self.assertEqual(SBA.from_dense(a, filter = lambda x: x > 0), [2])
 
     def test_large_array(self):
         a = SBA()
         for i in range(100000):
-            a.set_bit(i, True)
+            a.set(i, True)
         self.assertEqual(len(a), 100000)
         self.assertEqual(a[0], 99999)
         for i in range(100000):
-            a.set_bit(i, False)
+            a.set(i, False)
         self.assertEqual(len(a), 0)
 
     def test_from_capacity(self):
@@ -138,21 +140,21 @@ class TestSBA(unittest.TestCase):
         a = SBA([3, 2, 1])
         b = SBA([2, 1, 0])
         self.assertEqual(a & b, [2, 1])
-        self.assertEqual(len(a & b), SBA.and_len(a, b))
+        self.assertEqual(len(a & b), SBA.andl(a, b))
         self.assertEqual(a | b, [3, 2, 1, 0])
-        self.assertEqual(len(a | b), SBA.or_len(a, b))
+        self.assertEqual(len(a | b), SBA.orl(a, b))
         self.assertEqual(a ^ b, [3, 0])
-        self.assertEqual(len(a ^ b), SBA.xor_len(a, b))
+        self.assertEqual(len(a ^ b), SBA.xorl(a, b))
 
     def test_and(self):
         a = SBA(get_random_indicies())
         b = SBA(get_random_indicies())
-        c = SBA.and_bits(a, b)
-        self.assertTrue(len(c) == SBA.and_len(a, b))
+        c = SBA.andb(a, b)
+        self.assertTrue(len(c) == SBA.andl(a, b))
         for i in c:
             self.assertTrue(i in a and i in b)
-            a.set_bit(i, False)
-            b.set_bit(i, False)
+            a.set(i, False)
+            b.set(i, False)
         for i in a:
             for j in b:
                 self.assertTrue(i != j)
@@ -160,15 +162,15 @@ class TestSBA(unittest.TestCase):
     def test_or(self):
         a = SBA(get_random_indicies())
         b = SBA(get_random_indicies())
-        c = SBA.or_bits(a, b)
-        self.assertTrue(len(c) == SBA.or_len(a, b))
+        c = SBA.orb(a, b)
+        self.assertTrue(len(c) == SBA.orl(a, b))
         for i in c:
             if i in a:
-                a.set_bit(i, False)
+                a.set(i, False)
                 if i in b:
-                    b.set_bit(i, False)
+                    b.set(i, False)
             elif i in b:
-                b.set_bit(i, False)
+                b.set(i, False)
             else:
                 self.assertTrue(False)
         self.assertTrue(len(a) == 0)
@@ -177,32 +179,52 @@ class TestSBA(unittest.TestCase):
     def test_xor(self):
         a = SBA(get_random_indicies())
         b = SBA(get_random_indicies())
-        c = SBA.xor_bits(a, b)
-        self.assertTrue(len(c) == SBA.xor_len(a, b))
+        c = SBA.xorb(a, b)
+        self.assertTrue(len(c) == SBA.xorl(a, b))
         for i in c:
             if i in a:
-                a.set_bit(i, False)
+                a.set(i, False)
                 if i in b:
                     self.assertTrue(False)
             elif i in b:
-                b.set_bit(i, False)
+                b.set(i, False)
             else:
                 self.assertTrue(False)
         for i in a:
             self.assertTrue(i in b)
     
-    def test_turn_off_all(self):
+    def test_rm(self):
         a = SBA(get_random_indicies())
         a_cp = a.cp()
         rm = SBA(get_random_indicies())
         rm_cp = rm.cp()
-        a.turn_off_all(rm)
+        a.rm(rm)
         self.assertTrue(rm == rm_cp)
         for i in rm:
             self.assertTrue(not i in a)
-        for i in SBA.and_bits(a, a_cp):
+        for i in SBA.andb(a, a_cp):
             self.assertTrue(not i in rm)
+
+def speed_test():
+    start = time()
+    sub = 0
+    for i in range(10000):
+        substart = time()
+        a = SBA(get_random_indicies(1000, 1000))
+        b = SBA(get_random_indicies(1000, 1000))
+        substop = time()
+        sub += substop - substart
+        SBA.andb(a, b)
+        SBA.andl(a, b)
+        SBA.orb(a, b)
+        SBA.orl(a, b)
+        SBA.xorb(a, b)
+        SBA.xorl(a, b)
+        a.cp().rm(b)
+    stop = time()
+    print(stop - start - sub)
 
 if __name__ == "__main__":
     SBA.seed_rand()
     unittest.main()
+    # speed_test()

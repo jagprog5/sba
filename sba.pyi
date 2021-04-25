@@ -72,10 +72,11 @@ class SBA:
         ```
         '''
     
-    def from_dense(buffer, reverse = False):
+    def from_dense(buffer, reverse = False, filter = lambda x: x != 0):
         '''
         Converts an array to an SBA.  
-        buffer is an optionally writable memoryview to a contiguous list of type short, int, long, float, or double.  
+        buffer is a memoryview to a contiguous list of type short, int, long, float, or double.  
+        filter should give True for elements that should should be placed in the SBA.  
         ```python
         >>> from array import array
         >>> a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
@@ -124,7 +125,7 @@ class SBA:
         ```
         '''
     
-    def set_bit(self, index: int, state: bool = True):
+    def set(self, index: int, state: bool = True):
         ''' Sets the state of a bit, as indicated by the position in the array. '''
     
     def __delitem__(self, index):
@@ -169,23 +170,23 @@ class SBA:
     def cp(self) -> SBA:
         ''' Creates a deep-copy. '''
     
-    def or_bits(a: SBA, b: SBA) -> SBA:
-        ''' Returns bits in a OE in b. '''
+    def orb(a: SBA, b: SBA) -> SBA:
+        ''' OR bits. Returns bits in a OR in b. '''
 
-    def or_len(a: SBA, b: SBA) -> int:
-        ''' Returns the number of bits in a OR in b. '''
+    def orl(a: SBA, b: SBA) -> int:
+        ''' OR length. Returns the number of bits in a OR in b. '''
     
-    def xor_bits(a: SBA, b: SBA) -> SBA:
-        ''' Returns bits in a XOR in b. '''
+    def xorb(a: SBA, b: SBA) -> SBA:
+        ''' XOR bits. Returns bits in a XOR in b. '''
 
-    def xor_len(a: SBA, b: SBA) -> int:
-        ''' Returns the number of bits in a XOR in b. '''
+    def xorl(a: SBA, b: SBA) -> int:
+        ''' XOR length. Returns the number of bits in a XOR in b. '''
     
-    def and_bits(a: SBA, b: SBA) -> SBA:
-        ''' Returns bits in a AND in b. '''
+    def andb(a: SBA, b: SBA) -> SBA:
+        ''' AND bits. Returns bits in a AND in b. '''
 
-    def and_len(a: SBA, b: SBA) -> int:
-        ''' Returns the number of bits in a AND in b. '''
+    def andl(a: SBA, b: SBA) -> int:
+        ''' AND length. Returns the number of bits in a AND in b. '''
     
     @overload
     def __add__(self, other: str) -> str:
@@ -222,8 +223,21 @@ class SBA:
     def __or__(self, other):
         ''' See __add__ '''
     
-    def get_bit(self, index: int) -> bool:
-        ''' Returns the state of a bit as indicated by the position in the array. '''
+    def get(self, index1: int, index2: int = None) -> Union[bool, SBA]:
+        '''
+        if index2 is left blank:  
+            Returns the state of a bit as indicated by the position in the array.  
+        ```python
+            >>> SBA([3, 2]).get(3)
+            True
+        ```
+        if index2 is specified:
+            returns an SBA of all elements in a section from index1 downto index2, inclusively.
+        ```python
+            >>> SBA([11, 9, 6, 2]).get(10, 1)
+            [9 6 2]
+        ```
+        '''
     
     @overload
     def __mul__(self, other: int) -> bool:
@@ -280,14 +294,17 @@ class SBA:
         ```
         '''
     
+    def rm(self, r: SBA) -> SBA:
+        ''' Turns off all bits that are in r. '''
+    
     def shift(self, n: int) -> SBA:
-        ''' Shifts self by n places, where n can be positive or negative. '''
+        ''' Shifts self by n places. A positive n is a left shift. '''
     
     def seed_rand():
         ''' Seeds c srand, for use in rand_int and subsample. '''
     
     def rand_int() -> int:
-        ''' Returns random positive int in c int range. See seed_rand. '''
+        ''' Returns random positive c int. See seed_rand. '''
     
     def subsample(self, amount: float) -> SBA:
         ''' Returns a random subsample. See seed_rand. ''' 
