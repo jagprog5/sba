@@ -14,8 +14,6 @@ from typing import Iterable, Union, Callable
 
 '''
 There's two different ways of handling memory allocations when doing operations. It's not apparent which is better, so I'm leaving both as an option for now.
-My guess is that ALLOC_THEN_SHRINK = False will lead to less heap frag, but ALLOC_THEN_SHRINK = True will be faster in the short term.
-
 ALLOC_THEN_SHRINK = True:
     Allocate the maximum size required for the result, based off of the lengths of the operands. Then, shrink the result to the actual used size when complete.
     For example, if A is of length 2, and B is of length 3, then A AND B will have at max a length of 2.
@@ -24,6 +22,11 @@ ALLOC_THEN_SHRINK = False:
     Continually realloc up from a length of 0 until the operation is done, according to SBA._lengthen_if_needed
 '''
 cdef bint ALLOC_THEN_SHRINK = False
+
+'''
+Always shorten the array when an op is complete. This may not be optimal with repeated calls to turnOff.
+'''
+cdef bint STRICT_SHORTEN = False
 
 cdef extern from "math.h":
     float floorf(float)
@@ -184,7 +187,7 @@ cdef class SBA:
         cdef int i = ln - 1 if reverse else 0
         while i > -1 if reverse else i < ln:
             if buf[i] != 0 if filter is None else filter(buf[i]):
-                ret._lengthen_if_needed()
+                ret._lengthen_if_needed() # allowing ALLOC_THEN_SHRINK = True here would not be practical
                 ret.indices[ret.len.len] = i if reverse else ln - i - 1
                 ret.len.len += 1
             if reverse:
@@ -301,7 +304,7 @@ cdef class SBA:
         self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
 
     cdef inline _shorten_if_needed(self):
-        if self.len.len < self.cap >> 1:
+        if STRICT_SHORTEN or self.len.len < self.cap >> 1:
             self._shorten()
 
     cdef printRaw(self):
@@ -431,7 +434,7 @@ cdef class SBA:
             if middle >= self.len.len:
                 break # ran off end
             mid_val = self.indices[middle]
-        if ALLOC_THEN_SHRINK:
+        if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
             ret._shorten()
         return ret
     
@@ -495,7 +498,7 @@ cdef class SBA:
             (<int*>r)[0] = r_len
         else:
             (<SBA>r).len.len = r_len
-            if ALLOC_THEN_SHRINK:
+            if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
                 (<SBA>r)._shorten()
     
     @staticmethod
@@ -554,7 +557,7 @@ cdef class SBA:
             (<int*>r)[0] = r_len
         else:
             (<SBA>r).len.len = r_len
-            if ALLOC_THEN_SHRINK:
+            if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
                 (<SBA>r)._shorten()
     
     @staticmethod
