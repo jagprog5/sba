@@ -145,6 +145,11 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(len(a | b), SBA.orl(a, b))
         self.assertEqual(a ^ b, [3, 0])
         self.assertEqual(len(a ^ b), SBA.xorl(a, b))
+    
+    def test_inplace_ops(self):
+        a = SBA([3, 2, 1])
+        b = SBA([2, 1, 0])
+        self.assertEqual(b.andi(a), [2, 1])
 
     def test_and(self):
         a = SBA(get_random_indicies())

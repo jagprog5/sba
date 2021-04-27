@@ -9,7 +9,7 @@ A sparse bit array stores the indices of the bits that are ON. Made in cython.
 >>> a = SBA([40, 3, 0]) # an array with the bits 40, 3, and 0 set to ON
 >>> a
 [40 3 0]
->>> a.set_bit(3, False)
+>>> a.set(3, False)
 >>> a
 [40 0]
 

@@ -188,6 +188,9 @@ class SBA:
     def andl(a: SBA, b: SBA) -> int:
         ''' AND length. Returns the number of bits in a AND in b. '''
     
+    def andi(self, a: SBA) -> SBA:
+        ''' AND bits inplace, placed the result in this SBA. '''
+    
     @overload
     def __add__(self, other: str) -> str:
         '''
