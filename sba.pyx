@@ -69,7 +69,7 @@ cdef class SBA:
     def disable_checking():
         do_sba_checking = 0
     
-    def __init__(self, arg = None, arg2 = None):
+    def __init__(self, arg = None, arg2 = None, dense_filter = None):
         if arg is None:
             arg = 0
         if isinstance(arg, int):
@@ -80,21 +80,28 @@ cdef class SBA:
         elif isinstance(arg, np.ndarray):
             self.setFromNp(arg, True, True)
         elif PyObject_CheckBuffer(arg):
-            self.setFromBuffer(arg)
+            if dense_filter is None:
+                self.setFromBuffer(arg)
+            else:
+                self.setFromDense(arg, dense_filter)
         else:
             self._set_from_iterable(arg)
     
+    cdef inline int raiseIfViewing(self) except -1:
+        if self.views > 0:
+            raise SBAException("Buffer is still being viewed, or is not owned!")
+    
     cdef _init(self, int cap, bint set_len = True):
-        # Init some members. This is used in factory methods.
-        self.views = 0
+        '''
+        Initialize some members. This is used in the factory methods.
+        cap:  The new capacity.
+        set_len: set the length equal to the capacity, else leave it uninitialized because it's about to be set.
+        '''
+        self.raiseIfViewing()
         self.cap = cap
         if set_len:
             self.len.len = cap
-        memset(&self.len.len + 1, 0, sizeof(Py_ssize_t) - sizeof(int)) # clear rest of union
-    
-    cdef int raiseIfViewing(self) except -1:
-        if self.views > 0:
-            raise SBAException("Buffer is still being viewed, or is not owned!")
+        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * cap)
     
     def _set_from_iterable(self, obj: Iterable[int], bint check_valid = True):
         # Replaces this SBA's data with the iterable's data. Deep-copies. 
@@ -108,7 +115,6 @@ cdef class SBA:
                 if obj[i] <= obj[i + 1]:
                     raise SBAException("Indices must be in descending order, with no duplicates.")
         self._init(ln)
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * ln)
         for i in range(ln):
             self.indices[i] = obj[i]
     
@@ -140,7 +146,6 @@ cdef class SBA:
         self.raiseIfViewing()
         cdef int cap = stop_inclusive - start_inclusive + 1
         self._init(cap)
-        self.indices = <int*>PyMem_Realloc(self.indices, cap * sizeof(self.indices[0]))
         self._range(stop_inclusive, start_inclusive)
     
     @staticmethod
@@ -160,7 +165,6 @@ cdef class SBA:
             raise SBAException("cap must be non-negative!")
         self.raiseIfViewing()
         self._init(initial_capacity, set_default)
-        self.indices = <int*>PyMem_Realloc(self.indices, initial_capacity * sizeof(self.indices[0]))
         if set_default:
             self._default()
 
@@ -178,6 +182,11 @@ cdef class SBA:
         if (self.len.len if length_override == -1 else length_override) >= self.cap: # ==
             self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
             self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
+    
+    cdef setFromDense(self, const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
+        self.raiseIfViewing()
+        self._init(initial_capacity, set_default)
+
     
     @staticmethod
     def from_dense(const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
@@ -205,16 +214,16 @@ cdef class SBA:
             i += 1
         return 1
 
-    cdef setFromBuffer(self, const int[:] buf):
+    cdef setFromBuffer(self, const int[:] buf, bint check_valid = True):
         self.raiseIfViewing()
-        if do_sba_checking and not SBA._is_valid(buf):
+        if do_sba_checking and check_valid and not SBA._is_valid(buf):
             raise SBAException("The buffer doesn't have valid indices.")
         cdef int len = <int>buf.shape[0]
         self._init(len)
         self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
         memcpy(self.indices, &buf[0], len * sizeof(self.indices[0]))
 
-    cdef setFromNp(self, np.ndarray[int, ndim=1] arr, bint deep_copy, bint check_valid):
+    cdef setFromNp(self, np.ndarray[int, ndim=1] arr, bint deep_copy, bint check_valid = True):
         self.raiseIfViewing()
         if do_sba_checking and check_valid and not SBA._is_valid(arr):
             raise SBAException("The numpy array doesn't have valid indices.")
