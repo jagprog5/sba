@@ -1,7 +1,6 @@
-''' This stub is included for autocomplete and docstring stuff. '''
-
+from __future__ import annotations
 import numpy
-from typing import Iterable, Union, overload
+from typing import Iterable, Union, Optional, overload
 
 class SBAException(Exception):
     pass
@@ -153,25 +152,25 @@ class SBA:
     @overload
     def __getitem__(self, index: int) -> int:
         '''
-        Returns a bit as indicated by a position in the SBA.  
-        Not to be confused with get_bit.
+        if `index` is an `int`:  
+            Returns a bit as indicated by a position in the SBA.  
         ```python
         >>> SBA([4, 3, 2, 1])[-2]
         2
         ```
-        '''
-    
-    @overload
-    def __getitem__(self, range: slice) -> SBA:
-        '''
-        Returns the bits in the array within the specified range (inclusive stop, inclusive start).  
-        The specified step is ignored (uses 1).  
+
+        if `index` is a `slice`:  
+            Returns the bits in the array within the specified range (inclusive stop, inclusive start).  
+            The specified step is ignored (uses 1).  
         ```python
         >>> SBA([15, 10, 2, 1])[15:2]
         [15 10 2]
         >>> SBA(range(0, 10000, 2))[100:110]
         [110 108 106 104 102 100]
         '''
+    
+    @overload
+    def __getitem__(self, range: slice) -> SBA: ...
     
     def cp(self) -> SBA:
         ''' Creates a deep-copy. '''
@@ -198,29 +197,17 @@ class SBA:
         ''' AND bits inplace, placed the result in this SBA. '''
     
     @overload
-    def __add__(self, other: str) -> str:
-        '''
-        Returns string concatenated with self.  
-        ```python
-        >>> SBA([2, 1]) + " hi"
-        '[2 1] hi'
-        ```
-        '''
-    
-    @overload
     def __add__(self, other: int) -> SBA:
         '''
-        Returns SBA with specified bit set to ON.
+        if `other` is an `int`:
+            Returns SBA with specified bit set to ON.
         ```python
         >>> SBA([2, 1]) + 0
         [2 1 0]
         ```
-        '''
-    
-    @overload
-    def __add__(self, other: Union[Iterable[int], SBA]) -> SBA:
-        '''
-        Returns a copy of self OR other.
+
+        if `other` is an `Iterable`:
+            Returns self OR other.
         ```python
         >>> SBA([3, 2]) + SBA([2, 1])
         [3 2 1]
@@ -228,6 +215,12 @@ class SBA:
         [5 2 1 0]
         ```
         '''
+    
+    @overload
+    def __add__(self, other: str) -> str: ...
+    
+    @overload
+    def __add__(self, other: Union[Iterable[int], SBA]) -> SBA: ...
     
     def __or__(self, other):
         ''' See __add__ '''
@@ -248,35 +241,44 @@ class SBA:
         ```
         '''
     
-    @overload
-    def __mul__(self, other: int) -> bool:
+    def __contains__(self, index: int) -> bool:
         '''
-        Returns the state of the bit.  
+        Returns True if the specified index is contained in the SBA.  
+        '''
+
+    recursive_numeric = Iterable[Union[int, float, recursive_numeric]]
+
+    @overload
+    def __mul__(self, other: recursive_numeric) -> recursive_numeric:
+        '''
+        if `other` is an `int`:
+            Returns the state of the bit.  
         ```python
         >>> SBA([2, 1]) * 50
         False
         >>> SBA([2, 1]) * 2
         True
         ```
-        '''
-    
-    @overload
-    def __mul__(self, other: SBA) -> SBA:
-        '''
-        Returns a copy of self AND other.  
+
+        if `other` is an `SBA`:
+            Returns self AND other.  
         ```python
         >>> SBA([3, 2]) * SBA([2, 1])
         [2]
         ```
-        '''
-    
-    @overload
-    def __mul__(self, other: float) -> SBA:
-        '''
-        Returns a random subsample.  
+
+        if `other` is a `float`:
+            Returns a random subsample, each bit has a chance of turning off.  
         ```python
         >>> SBA([5, 4, 3, 2, 1, 0]) * (1 / 3)
         [5, 2]
+        ```
+
+        if `other` is an `Iterable`:
+            Returns the result of mul on each element.  
+        ```python
+        >>> SBA([3, 2]) * [0, 3, [3, 2]]
+        [False, True, [True, True]]
         ```
         '''
     
@@ -286,22 +288,23 @@ class SBA:
     @overload
     def __sub__(self, other: int) -> SBA:
         '''
-        Returns SBA with specified bit set to OFF.
+        if `other` is an `int`:
+            Returns SBA with specified bit set to OFF.
         ```python
         >>> SBA((2, 1)) - 2
         [1]
         ```
-        '''
-    
-    @overload
-    def __sub__(self, other: Union[SBA, Iterable[int]]) -> SBA:
-        '''
-        Returns a copy of self with all elements in other removed.
+
+        if `other` is an `Iterable`:
+            Returns self with all elements in other removed.
         ```python
         >>> SBA((3, 2, 1)) - SBA((3, 2))
         [1]
         ```
         '''
+    
+    @overload
+    def __sub__(self, other: Union[SBA, Iterable[int]]) -> SBA: ...
     
     def rm(self, r: SBA) -> SBA:
         ''' Turns off all bits that are in r. '''

@@ -649,6 +649,11 @@ cdef class SBA:
             return self.getBit(other)
         elif isinstance(other, float):
             return self.cp().subsample(other)
+        elif hasattr(other, "__getitem__"):
+            r = []
+            for i in other:
+                r.append(self.__mul__(i))
+            return r
         else:
             raise TypeError(str(type(other)) + " not supported for * or & ops.")
     
@@ -684,23 +689,6 @@ cdef class SBA:
         return self
     
     def __sub__(self, other):
-        '''
-        For an int: Turns off the bit.
-        ```python
-        >>> SBA((2, 1)) - 2
-        [1]
-        ```
-        For an SBA: removes all elements
-        ```python
-        >>> SBA((3, 2, 1)) - SBA((3, 2))
-        [1]
-        ```
-        ```python
-        For a iterable of ints: removes each element
-        >>> SBA((2, 1)) - [2, 0, 5]
-        [1]
-        ```
-        '''
         cdef SBA cp = self.cp()
         if isinstance(other, int):
             cp.turnOff(<int>other)
@@ -783,6 +771,8 @@ cdef class SBA:
     
     cpdef SBA subsample(self, float amount):
         self.raiseIfViewing()
+        if amount < 0 or amount > 1:
+            raise SBAException("Subsample amount must be from 0 to 1, inclusively")
         cdef int check_val = <int>(amount * RAND_MAX)
         cdef int to_offset = 0
         cdef int from_offset = 0

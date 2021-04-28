@@ -2,6 +2,8 @@
 
 A sparse bit array stores the indices of the bits that are ON. Made in cython.
 
+A python stub is provided for type hinting and autocomplete. Make sure to use pylance if you're using vscode.
+
 ## Overview
 
 ```python

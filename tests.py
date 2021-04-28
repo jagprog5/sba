@@ -145,6 +145,7 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(len(a | b), SBA.orl(a, b))
         self.assertEqual(a ^ b, [3, 0])
         self.assertEqual(len(a ^ b), SBA.xorl(a, b))
+        self.assertEqual(a & [5, 7, 1], [False, False, True])
     
     def test_inplace_ops(self):
         a = SBA([3, 2, 1])
