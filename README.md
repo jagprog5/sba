@@ -29,11 +29,11 @@ array([50,  3,  0], dtype=int32)
 [5 2]
 
 >>> # encodes a float value by turning 3 bits ON in an array with a total size of 100
->>> SBA.encode_linear(0.0, 3, 100)
+>>> SBA.encode(0.0, 3, 100)
 [2 1 0]
->>> SBA.encode_linear(0.5, 3, 100)
+>>> SBA.encode(0.5, 3, 100)
 [51 50 49]
->>> SBA.encode_linear(1.0, 3, 100)
+>>> SBA.encode(1.0, 3, 100)
 [99 98 97]
 ```
 ## Installation: PyPI

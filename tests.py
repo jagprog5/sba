@@ -120,10 +120,10 @@ class TestSBA(unittest.TestCase):
         self.assertEqual(a.subsample(0), [])
 
     def test_encoding(self):
-        self.assertEqual(SBA.encode_linear(0.5, 3, 100), [51, 50, 49])
-        self.assertEqual(SBA.encode_linear(1.0, 2, 10), [9, 8])
-        self.assertEqual(SBA.encode_periodic(0, 1, 2, 10), [1, 0])
-        self.assertEqual(SBA.encode_periodic(-1, 1, 2, 10), [1, 0])
+        self.assertEqual(SBA.encode(0.5, 3, 100), [51, 50, 49])
+        self.assertEqual(SBA.encode(1.0, 2, 10), [9, 8])
+        self.assertEqual(SBA.encode(0, 2, 10, period=1), [1, 0])
+        self.assertEqual(SBA.encode(-1, 2, 10, period=1), [1, 0])
 
     def test_comparison(self):
         self.assertTrue(SBA([5, 2, 1]) >= SBA([5, 2]))

@@ -47,7 +47,7 @@ class SBA:
     def from_iterable(obj: Iterable[int], check_valid: bool = True) -> SBA:
         '''
         Deep-copy iterable to init an SBA.  
-        check_valid: check that all elements are valid (integers, in int range, descending order, no duplicates). 
+        `check_valid`: check that all elements are valid (integers, in int range, descending order, no duplicates). 
         ```python
         >>> SBA.from_iterable([5, 2, 0])
         [5 2 0]
@@ -75,8 +75,8 @@ class SBA:
     def from_dense(buffer, reverse = False, filter = lambda x: x != 0):
         '''
         Converts an array to an SBA.  
-        buffer is a memoryview to a contiguous list of type short, int, long, float, or double.  
-        filter should give True for elements that should should be placed in the SBA.  
+        `buffer` is a memoryview to a contiguous list of type short, int, long, float, or double.  
+        `filter` should give True for elements that should should be placed in the SBA.  
         ```python
         >>> from array import array
         >>> a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
@@ -90,24 +90,30 @@ class SBA:
     def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
         '''
         Creates and initializes an SBA from a numpy array.  
-        deep_copy:  
-            true: The sba gets a separate copy of the data.  
-            false: The sba gets a read-only reference to the data.  
-        check_valid: check that all elements are valid (descending order, no duplicates).
+        `deep_copy`:  
+            True: The sba gets a separate copy of the data.  
+            False: The sba gets a read-only reference to the data.
+                The underlying data must not be modified from numpy while it is being viewed by an SBA.
+                If the indices are modified to be no-longer valid,
+                then incorrect values may be obtained from binary ops (but segfaults will not occur).
+        `check_valid`: check that all elements are valid (descending order, no duplicates).
         ```python
         >>> SBA.from_np(np.array([5, 2, 0], np.intc)) # intc needed to work cross-platform
         [5 2 0]
         >>> a = SBA.from_np(np.array([5, 2, 0]), deep_copy=False) 
         >>> a[0] = 3 # raises exception since it's read-only.
-        ``` 
+        ```
         '''
     
     def to_np(self, give_ownership = True) -> numpy.ndarray:
         '''
         Create a numpy array.  
-        give_ownership:  
-            true: Makes the returned numpy array the owner of the data, and clears this SBA's reference to the data.  
-            false: The returned numpy array gets a read-only buffer to the data.
+        `give_ownership`:  
+            True: Makes the returned numpy array the owner of the data, and clears this SBA's reference to the data.  
+                By "clearing" the reference to the data, it sets itself to an empty SBA, but this may be subject to change.  
+                To be safe, don't use an SBA after calling to_np(False) on it.
+            False: The returned numpy array gets a read-only buffer to the data.
+                While the data is being used, it is locked out from being changed by this SBA.
         '''
     
     def print_raw(self):
@@ -133,8 +139,8 @@ class SBA:
 
     def __setitem__(self, index: int, value: int):
         '''
-        Turns OFF a bit, as indicated by index: a position in the SBA,  
-        then turns ON a bit indicated by value: a bit in the array.  
+        Turns OFF a bit, as indicated by `index`: a position in the SBA,  
+        then turns ON a bit indicated by `value`: a bit in the array.  
         Not to be confused with set_bit.
         ```python
         >>> a = SBA([15, 10, 5, 0])
@@ -312,17 +318,25 @@ class SBA:
     def subsample(self, amount: float) -> SBA:
         ''' Returns a random subsample. See seed_rand. ''' 
     
-    def encode_linear(input: float, num_on_bits: int, size: int) -> SBA:
+    def encode(input: float, num_on_bits: int, size: int, period: Optional[float]) -> SBA:
         '''
-        Encodes input, a float from 0 to 1, inclusively, with  
-        num_on_bits being the length of the SBA, and  
-        size being the length of the underlying array being represented.  
-        '''
+        Encodes input as an SBA.
 
-    def encode_periodic(input: float, period: float, num_on_bits: int, size: int) -> SBA:
-        '''
-        Encodes input linearly such that the same difference from a multiple
-        of period will give the same encoding, with
-        num_on_bits being the length of the SBA, and  
-        size being the length of the underlying array being represented.  
+        `num_on_bits` is the length of the SBA.  
+        `size` is the length of the underlying array being represented.  
+        if `period` is not specified:  
+            input should be from 0 to 1, inclusively.  
+            An input of 0 turns on the least significant bits,  
+            an input of 1 turns on the most significant bits, and  
+            the output is scaled in-between.  
+        ```python
+        >>> SBA.encode(0.5, 3, 100)
+        [51 50 49]
+        ```
+        if `period` is specified:
+            Encodes input such that it wraps back to 0 as it approaches a multiple of the period.
+        ```python
+        >>> SBA.encode(1, 3, 100, period=10) == SBA.encode(11, 3, 100, period=10)
+        True
+        ```
         '''
