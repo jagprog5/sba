@@ -135,7 +135,6 @@ cdef class SBA:
         self._range(self.len.len - 1, 0)
     
     cdef setFromRange(self, int stop_inclusive, int start_inclusive):
-        # Turns on the indicies from start downto stop (start >= stop).
         if stop_inclusive < start_inclusive:
             raise SBAException("stop must be >= start")
         self.raiseIfViewing()
@@ -797,8 +796,6 @@ cdef class SBA:
     
     @staticmethod
     cdef SBA encodeLinear(float input, int num_on_bits, int length):
-        if input < 0: # > 1 is ok
-            raise SBAException("Can't encode a negative value in this function.")
         if num_on_bits > length:
             raise SBAException("The number of ON bits can't exceed the length of the array.")
         cdef SBA ret = SBA.fromCapacity(num_on_bits, False)
@@ -807,10 +804,6 @@ cdef class SBA:
         for i in range(num_on_bits):
             ret.indices[i] = start_offset + num_on_bits - i - 1
         return ret
-    
-    @staticmethod
-    def encode_linear(float input, int num_on_bits, int size):
-        return SBA.encodeLinear(input, num_on_bits, size)
     
     @staticmethod
     cdef SBA encodePeriodic(float input, float period, int num_on_bits, int length):
@@ -838,7 +831,10 @@ cdef class SBA:
             for i in range(num_on_bits):
                 ret.indices[i] = num_on_bits - i - 1 + start_offset
         return ret
-    
+
     @staticmethod
-    def encode_periodic(float input, float period, int num_on_bits, int size):
-        return SBA.encodePeriodic(input, period, num_on_bits, size)
+    def encode(float input, int num_on_bits, int size, float period = 0):
+        if period == 0:
+            return SBA.encodeLinear(input, num_on_bits, size)
+        else:
+            return SBA.encodePeriodic(input, period, num_on_bits, size)
