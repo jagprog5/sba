@@ -40,11 +40,11 @@ cdef extern from "numpy/arrayobject.h":
     void PyArray_ENABLEFLAGS(np.ndarray arr, int flags)
 
 cdef fused const_numeric:
-    const short[:]
-    const int[:]
-    const long[:]
-    const float[:]
-    const double[:]
+    const short[::1]
+    const int[::1]
+    const long[::1]
+    const float[::1]
+    const double[::1]
 
 class SBAException(Exception):
     pass
@@ -69,23 +69,24 @@ cdef class SBA:
     def disable_checking():
         do_sba_checking = 0
     
-    def __init__(self, arg = None, arg2 = None, dense_filter = None):
-        if arg is None:
-            arg = 0
-        if isinstance(arg, int):
-            if isinstance(arg2, int):
-                self.setFromRange(arg, arg2)
+    def __init__(self, *args, **kwargs):
+        if len(args) == 0:
+            args = [0]
+        if isinstance(args[0], int):
+            if len(args) > 1 and isinstance(args[1], int):
+                self.setFromRange(args[0], args[1])
             else:
-                self.setFromCapacity(arg, True)
-        elif isinstance(arg, np.ndarray):
-            self.setFromNp(arg, True, True)
-        elif PyObject_CheckBuffer(arg):
-            if dense_filter is None:
-                self.setFromBuffer(arg)
+                self.setFromCapacity(args[0], True)
+        # elif isinstance(arg[0], np.ndarray):
+        #     self.setFromNp(arg, True)
+        elif PyObject_CheckBuffer(arg[0]):
+            # bint check_valid=True, bint reverse=False, dense_filter=None
+            if len(arg) == 1:
+                self.setFromBuffer(args[0], check_valid)
             else:
-                self.setFromDense(arg, dense_filter)
+                self.setFromDense(args[0], reverse, dense_filter)
         else:
-            self._set_from_iterable(arg)
+            self._set_from_iterable(args[0])
     
     cdef inline int raiseIfViewing(self) except -1:
         if self.views > 0:
@@ -94,7 +95,7 @@ cdef class SBA:
     cdef _init(self, int cap, bint set_len = True):
         '''
         Initialize some members. This is used in the factory methods.
-        cap:  The new capacity.
+        cap: The new capacity.
         set_len: set the length equal to the capacity, else leave it uninitialized because it's about to be set.
         '''
         self.raiseIfViewing()
@@ -184,28 +185,27 @@ cdef class SBA:
             self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
     
     cdef setFromDense(self, const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
-        self.raiseIfViewing()
-        self._init(initial_capacity, set_default)
-
-    
-    @staticmethod
-    def from_dense(const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
-        cdef SBA ret = SBA.__new__(SBA) # fields default to 0
+        self._init(0)
         cdef int ln = len(buf)
         cdef int i = ln - 1 if reverse else 0
         while i > -1 if reverse else i < ln:
             if buf[i] != 0 if filter is None else filter(buf[i]):
-                ret._lengthen_if_needed() # allowing ALLOC_THEN_SHRINK = True here would not be practical
-                ret.indices[ret.len.len] = i if reverse else ln - i - 1
-                ret.len.len += 1
+                self._lengthen_if_needed() # allowing ALLOC_THEN_SHRINK = True here would not be practical
+                self.indices[self.len.len] = i if reverse else ln - i - 1
+                self.len.len += 1
             if reverse:
                 i -= 1
             else:
                 i += 1
+    
+    @staticmethod
+    def from_dense(const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
+        cdef SBA ret = SBA.__new__(SBA)
+        ret.setFromDense(buf, reverse, filter)
         return ret
 
     @staticmethod
-    cdef inline bint _is_valid(const int[:] arr):
+    cdef inline bint _is_valid(const int[::1] arr):
         cdef int i = 0
         cdef int len = <int>arr.shape[0]
         while i < len - 1:
@@ -214,7 +214,7 @@ cdef class SBA:
             i += 1
         return 1
 
-    cdef setFromBuffer(self, const int[:] buf, bint check_valid = True):
+    cdef setFromBuffer(self, const int[::1] buf, bint check_valid = True):
         self.raiseIfViewing()
         if do_sba_checking and check_valid and not SBA._is_valid(buf):
             raise SBAException("The buffer doesn't have valid indices.")
