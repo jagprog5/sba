@@ -33,20 +33,20 @@ class SBA:
           - Each indice is of type int.
           - Each indice is in c int range.
           - Indices are in descending order, with no duplicates.
-        Note that the 'check_valid' arg in factory methods can disable checking for individual calls,
+        Note that the 'verify' arg in factory methods can disable checking for individual calls,
         even if checking is enabled globally.  
         '''
     
     def disable_checking() -> None:
         '''
         Disables the check that ensures indices are valid on SBA creation.  
-        This overrides the 'check_valid' param used in factory methods.  
+        This overrides the 'verify' param used in factory methods.  
         '''
     
-    def from_iterable(obj: Iterable[int], check_valid: bool = True) -> SBA:
+    def from_iterable(obj: Iterable[int], verify: bool = True) -> SBA:
         '''
         Deep-copy iterable to init an SBA.  
-        `check_valid`: check that all elements are valid (integers, in int range, descending order, no duplicates). 
+        `verify`: check that all elements are valid (integers, in int range, descending order, no duplicates). 
         ```python
         >>> SBA.from_iterable([5, 2, 0])
         [5 2 0]
@@ -86,7 +86,7 @@ class SBA:
         ```
         '''
     
-    def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
+    def from_np(np_arr, deep_copy = True, verify = True) -> SBA:
         '''
         Creates and initializes an SBA from a numpy array.  
         `deep_copy`:  
@@ -95,7 +95,7 @@ class SBA:
                 The underlying data must not be modified from numpy while it is being viewed by an SBA.
                 If the indices are modified to be no-longer valid,
                 then incorrect values may be obtained from binary ops (but segfaults will not occur).
-        `check_valid`: check that all elements are valid (descending order, no duplicates).
+        `verify`: check that all elements are valid (descending order, no duplicates).
         ```python
         >>> SBA.from_np(np.array([5, 2, 0], np.intc)) # intc needed to work cross-platform
         [5 2 0]

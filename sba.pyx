@@ -28,6 +28,11 @@ Always shorten the array when an op is complete. This may not be optimal with re
 '''
 cdef bint STRICT_SHORTEN = False
 
+'''
+Raise an exception if irrelevant or duplicate arguments are used in __init__.
+'''
+cdef bint STRICT_INIT = True
+
 cdef extern from "math.h":
     float floorf(float)
     float log10f(float)
@@ -53,7 +58,7 @@ cdef union SBALen: # Needs little-endian
     Py_ssize_t ssize_t_len # for use in buffer protocol
     int len # for normal use in SBA
 
-cdef bint do_sba_checking = 1
+cdef bint do_sba_checking = True
 
 cdef class SBA:
     cdef int views # number of references to buffer
@@ -63,36 +68,109 @@ cdef class SBA:
 
     @staticmethod
     def enable_checking():
-        do_sba_checking = 1
+        do_sba_checking = True
     
     @staticmethod
     def disable_checking():
-        do_sba_checking = 0
+        do_sba_checking = False
+    
+    cdef inline int _kwargs_whitelist(l, kwargs) except -1:
+        if STRICT_INIT:
+            good =  all(elem in l for elem in kwargs)
+            if not good:
+                raise SBAException("Please remove irrelevant keyword arguments. It should only contain: " + str(l))
     
     def __init__(self, *args, **kwargs):
+        # wraps the factory methods. The specific factory method is inferred from the arguments.
         if len(args) == 0:
-            args = [0]
-        if isinstance(args[0], int):
-            if len(args) > 1 and isinstance(args[1], int):
-                self.setFromRange(args[0], args[1])
+            if len(kwargs) == 0:
+                self.__init__(0)
+            elif 'capacity' in kwargs:
+                arg = kwargs.pop('capacity')
+                self.__init__(arg, **kwargs)
+            elif 'start' in kwargs:
+                arg = kwargs.pop('start')
+                self.__init__(arg, **kwargs)
+            elif 'stop' in kwargs:
+                raise SBAException("stop kwarg was specified without start kwarg.")
+            elif 'sparse' in kwargs:
+                if STRICT_INIT and ('filter' in kwargs or 'dense' in kwargs):
+                    raise SBAException("Can't specify filter or dense for sparse.")
+                arg = kwargs.pop('sparse')
+                self.__init__(arg, **kwargs)
+            elif 'dense' in kwargs:
+                arg = kwargs.pop('dense')
+                if 'filter' not in kwargs:
+                    kwargs['filter'] = None
+                self.__init__(arg, **kwargs)
+            elif 'filter' in kwargs:
+                raise SBAException("Can't specify filter without positional arg or dense kwarg.")
+            elif STRICT_INIT:
+                raise SBAException("Unknown kwargs: " + kwargs)
+        elif len(args) == 1:
+            if type(args[0]) == int:
+                # single integer positional arg
+                if 'start' in kwargs:
+                    if STRICT_INIT and len(kwargs) > 1:
+                        raise SBAException("Please remove irrelevant arguments for range init.")
+                    self.setFromRange(args[0], kwargs['start'])
+                elif 'stop' in kwargs:
+                    if STRICT_INIT and len(kwargs) > 1:
+                        raise SBAException("Please remove irrelevant arguments for range init.")
+                    self.setFromRange(kwargs['stop'], args[0])
+                else:
+                    if STRICT_INIT and len(kwargs) > 0:
+                        raise SBAException("Please remove irrelevant arguments."
+                            + " The capacity argument should be standalone.")
+                    self.setFromCapacity(args[0])
+            elif PyObject_CheckBuffer(args[0]):
+                # single buffer positional arg
+                if 'filter' in kwargs:
+                    # single dense buffer positional arg
+                    SBA._kwargs_contains_only(['filter', 'reverse'], kwargs)
+                    self.setFromDenseBuffer(args[0],
+                            'reverse' in kwargs and kwargs['reverse'], # default False
+                            kwargs['filter'] if callable(kwargs['filter']) else None)
+                else:
+                    # single sparse buffer positional arg
+                    SBA._kwargs_contains_only(['copy', 'verify'], kwargs)
+                    self.setFromBuffer(args[0],
+                            'copy' not in kwargs or kwargs['copy'], # default True
+                            'verify' not in kwargs or kwargs['verify'])  # default True
             else:
-                self.setFromCapacity(args[0], True)
-        # elif isinstance(arg[0], np.ndarray):
-        #     self.setFromNp(arg, True)
-        elif PyObject_CheckBuffer(arg[0]):
-            # bint check_valid=True, bint reverse=False, dense_filter=None
-            if len(arg) == 1:
-                self.setFromBuffer(args[0], check_valid)
-            else:
-                self.setFromDense(args[0], reverse, dense_filter)
+                # single iterable positional arg
+                if 'filter' in kwargs:
+                    # single dense iterable positional arg
+                    SBA._kwargs_contains_only(['filter', 'reverse'], kwargs)
+                    self.set_from_dense_iterable(args[0],
+                            'reverse' in kwargs and kwargs['reverse'], # default False
+                            kwargs['filter'] if callable(kwargs['filter']) else None)
+                else:
+                    # single sparse iterable positional arg
+                    SBA._kwargs_contains_only(['verify'], kwargs)
+                    self.set_from_iterable(args[0], 'verify' in kwargs and kwargs['verify']) # default True
         else:
-            self._set_from_iterable(args[0])
+            # multiple positional arguments
+            if len(args) == 2 and type(args[0]) is int and type(args[1]) is int:
+                self.__init__(stop = args[0], start = args[1], **kwargs)
+            else:
+                for i in range(len(args)):
+                    arg = args[i]
+                    if callable(arg) or arg is None:
+                        del args[i]
+                        if STRICT_INIT and 'filter' in kwargs:
+                            raise SBAException("Multiple filters specified.")
+                        kwargs['filter'] = arg
+                        if len(args) == 1:
+                            self.__init__(args[0], **kwargs)
+                            return
+                raise SBAException("Bad positional arguments.") # cutting this short for maintainability
     
     cdef inline int raiseIfViewing(self) except -1:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
     
-    cdef _init(self, int cap, bint set_len = True):
+    cdef inline _init(self, int cap, bint set_len = True):
         '''
         Initialize some members. This is used in the factory methods.
         cap: The new capacity.
@@ -104,25 +182,37 @@ cdef class SBA:
             self.len.len = cap
         self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * cap)
     
-    def _set_from_iterable(self, obj: Iterable[int], bint check_valid = True):
-        # Replaces this SBA's data with the iterable's data. Deep-copies. 
-        self.raiseIfViewing()
+    def set_from_iterable(self, obj: Iterable[int], bint verify = True):
         cdef int ln = <int>len(obj)
-        if do_sba_checking and check_valid:
-            for i in obj:
-                if not isinstance(i, int):
-                    raise SBAException("Integers only.")
+        self._init(ln)
+        if do_sba_checking and verify:
+            # implicit check of integer range
             for i in range(ln - 1):
                 if obj[i] <= obj[i + 1]:
                     raise SBAException("Indices must be in descending order, with no duplicates.")
-        self._init(ln)
         for i in range(ln):
             self.indices[i] = obj[i]
     
     @staticmethod
-    def from_iterable(obj: Iterable[int], bint check_valid = True) -> SBA:
+    def from_iterable(*args, **kwargs) -> SBA:
         cdef SBA ret = SBA.__new__(SBA)
-        ret._set_from_iterable(obj, check_valid)
+        ret._set_from_iterable(*args, **kwargs)
+        return ret
+    
+    def set_from_dense_iterable(self, obj: Iterable, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
+        if not hasattr(filter, "__call__"):
+            filter = lambda x:x!=0
+        self._init(0)
+        for i in range(len(obj)):
+            if filter(obj[i]):
+                self._lengthen_if_needed()
+                self.indices[self.len.len] = ln - i - i if reverse else i
+                self.len.len += 1
+    
+    @staticmethod
+    def from_dense_iterable(*args, **kwargs) -> SBA:
+        cdef SBA ret = SBA.__new__(SBA)
+        ret.set_from_dense_iterable(*args, **kwargs)
         return ret
     
     cdef inline void _range(self, int stop_inclusive, int start_inclusive):
@@ -159,7 +249,7 @@ cdef class SBA:
     def from_range(stop_inclusive: int, start_inclusive: int) -> SBA:
         return SBA.fromRange(stop_inclusive, start_inclusive)
 
-    cdef setFromCapacity(self, int initial_capacity, bint set_default):
+    cdef setFromCapacity(self, int initial_capacity, bint set_default = True):
         # Replace's this SBA's data.  
         # set_default: set to default value, otherwise leaves indices uninitialized and len = 0.  
         if initial_capacity < 0:
@@ -184,7 +274,14 @@ cdef class SBA:
             self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
             self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
     
-    cdef setFromDense(self, const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
+    # cdef setFromDenseBuffer(self, buf, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
+    #     self._init(0)
+
+    # self.setFromDenseBuffer(args[0],
+    #                         'reverse' in kwargs and kwargs['reverse'], # default False
+    #                         kwargs['filter'] if callable(kwargs['filter']) else None)
+    
+    cdef setFromDense(self, const_numeric buf, bint reverse = False, filter: Callable[[Union[int, float]], bool] = None):
         self._init(0)
         cdef int ln = len(buf)
         cdef int i = ln - 1 if reverse else 0
@@ -214,18 +311,18 @@ cdef class SBA:
             i += 1
         return 1
 
-    cdef setFromBuffer(self, const int[::1] buf, bint check_valid = True):
+    cdef setFromBuffer(self, const int[::1] buf, bint deep_copy, bint verify = True):
         self.raiseIfViewing()
-        if do_sba_checking and check_valid and not SBA._is_valid(buf):
+        if do_sba_checking and verify and not SBA._is_valid(buf):
             raise SBAException("The buffer doesn't have valid indices.")
         cdef int len = <int>buf.shape[0]
         self._init(len)
         self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
         memcpy(self.indices, &buf[0], len * sizeof(self.indices[0]))
 
-    cdef setFromNp(self, np.ndarray[int, ndim=1] arr, bint deep_copy, bint check_valid = True):
+    cdef setFromNp(self, np.ndarray[int, ndim=1] arr, bint deep_copy, bint verify = True):
         self.raiseIfViewing()
-        if do_sba_checking and check_valid and not SBA._is_valid(arr):
+        if do_sba_checking and verify and not SBA._is_valid(arr):
             raise SBAException("The numpy array doesn't have valid indices.")
         cdef int len = <int>np.PyArray_DIMS(arr)[0]
         cdef int* data = <int*>np.PyArray_DATA(arr)
@@ -239,14 +336,14 @@ cdef class SBA:
             self.views = 1 # lock-out changing mem
     
     @staticmethod
-    cdef SBA fromNp(np.ndarray[int, ndim=1] arr, bint deep_copy, bint check_valid):
+    cdef SBA fromNp(np.ndarray[int, ndim=1] arr, bint deep_copy, bint verify):
         cdef SBA ret = SBA.__new__(SBA)
-        ret.setFromNp(arr, deep_copy, check_valid)
+        ret.setFromNp(arr, deep_copy, verify)
         return ret
     
     @staticmethod
-    def from_np(np_arr, deep_copy = True, check_valid = True) -> SBA:
-        return SBA.fromNp(np_arr, deep_copy, check_valid)
+    def from_np(np_arr, deep_copy = True, verify = True) -> SBA:
+        return SBA.fromNp(np_arr, deep_copy, verify)
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
         # Buffer protocol. Read-only 
