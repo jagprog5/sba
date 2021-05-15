@@ -17,7 +17,7 @@ There's two different ways of handling memory allocations when doing operations.
 ALLOC_THEN_SHRINK = True:
     Allocate the maximum size required for the result, based off of the lengths of the operands. Then, shrink the result to the actual used size when complete.
     For example, if A is of length 2, and B is of length 3, then A AND B will have at max a length of 2.
-    This strategy would allocate an array of length 2, then shrink it down when the AND op is complete to free up the excess.
+    This strategy would allocate an array of length 2, t hen shrink it down when the AND op is complete to free up the excess.
 ALLOC_THEN_SHRINK = False:
     Continually realloc up from a length of 0 until the operation is done, according to SBA._lengthen_if_needed
 '''
@@ -27,11 +27,6 @@ cdef bint ALLOC_THEN_SHRINK = False
 Always shorten the array when an op is complete. This may not be optimal with repeated calls to turnOff.
 '''
 cdef bint STRICT_SHORTEN = False
-
-'''
-Raise an exception if irrelevant or duplicate arguments are used in __init__.
-'''
-cdef bint STRICT_INIT = True
 
 cdef extern from "math.h":
     float floorf(float)
@@ -75,10 +70,10 @@ cdef class SBA:
         do_sba_checking = False
     
     cdef inline int _kwargs_whitelist(l, kwargs) except -1:
-        if STRICT_INIT:
-            good =  all(elem in l for elem in kwargs)
-            if not good:
-                raise SBAException("Please remove irrelevant keyword arguments. It should only contain: " + str(l))
+        # throw exception if kwargs contains anything not in list.
+        good = all(elem in l for elem in kwargs)
+        if not good:
+            raise SBAException("Please remove irrelevant keyword arguments. It should only contain: " + str(l))
     
     def __init__(self, *args, **kwargs):
         # wraps the factory methods. The specific factory method is inferred from the arguments.
@@ -94,7 +89,7 @@ cdef class SBA:
             elif 'stop' in kwargs:
                 raise SBAException("stop kwarg was specified without start kwarg.")
             elif 'sparse' in kwargs:
-                if STRICT_INIT and ('filter' in kwargs or 'dense' in kwargs):
+                if 'filter' in kwargs or 'dense' in kwargs:
                     raise SBAException("Can't specify filter or dense for sparse.")
                 arg = kwargs.pop('sparse')
                 self.__init__(arg, **kwargs)
@@ -105,21 +100,21 @@ cdef class SBA:
                 self.__init__(arg, **kwargs)
             elif 'filter' in kwargs:
                 raise SBAException("Can't specify filter without positional arg or dense kwarg.")
-            elif STRICT_INIT:
+            else:
                 raise SBAException("Unknown kwargs: " + kwargs)
         elif len(args) == 1:
             if type(args[0]) == int:
                 # single integer positional arg
                 if 'start' in kwargs:
-                    if STRICT_INIT and len(kwargs) > 1:
+                    if len(kwargs) > 1:
                         raise SBAException("Please remove irrelevant arguments for range init.")
                     self.setFromRange(args[0], kwargs['start'])
                 elif 'stop' in kwargs:
-                    if STRICT_INIT and len(kwargs) > 1:
+                    if len(kwargs) > 1:
                         raise SBAException("Please remove irrelevant arguments for range init.")
                     self.setFromRange(kwargs['stop'], args[0])
                 else:
-                    if STRICT_INIT and len(kwargs) > 0:
+                    if len(kwargs) > 0:
                         raise SBAException("Please remove irrelevant arguments."
                             + " The capacity argument should be standalone.")
                     self.setFromCapacity(args[0])
@@ -164,56 +159,12 @@ cdef class SBA:
                         if len(args) == 1:
                             self.__init__(args[0], **kwargs)
                             return
-                raise SBAException("Bad positional arguments.") # cutting this short for maintainability
+                if args[0], copy=True
+                raise SBAException("Bad positional arguments.") # cutting this short for maintainability.
     
     cdef inline int raiseIfViewing(self) except -1:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
-    
-    cdef inline _init(self, int cap, bint set_len = True):
-        '''
-        Initialize some members. This is used in the factory methods.
-        cap: The new capacity.
-        set_len: set the length equal to the capacity, else leave it uninitialized because it's about to be set.
-        '''
-        self.raiseIfViewing()
-        self.cap = cap
-        if set_len:
-            self.len.len = cap
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * cap)
-    
-    def set_from_iterable(self, obj: Iterable[int], bint verify = True):
-        cdef int ln = <int>len(obj)
-        self._init(ln)
-        if do_sba_checking and verify:
-            # implicit check of integer range
-            for i in range(ln - 1):
-                if obj[i] <= obj[i + 1]:
-                    raise SBAException("Indices must be in descending order, with no duplicates.")
-        for i in range(ln):
-            self.indices[i] = obj[i]
-    
-    @staticmethod
-    def from_iterable(*args, **kwargs) -> SBA:
-        cdef SBA ret = SBA.__new__(SBA)
-        ret._set_from_iterable(*args, **kwargs)
-        return ret
-    
-    def set_from_dense_iterable(self, obj: Iterable, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
-        if not hasattr(filter, "__call__"):
-            filter = lambda x:x!=0
-        self._init(0)
-        for i in range(len(obj)):
-            if filter(obj[i]):
-                self._lengthen_if_needed()
-                self.indices[self.len.len] = ln - i - i if reverse else i
-                self.len.len += 1
-    
-    @staticmethod
-    def from_dense_iterable(*args, **kwargs) -> SBA:
-        cdef SBA ret = SBA.__new__(SBA)
-        ret.set_from_dense_iterable(*args, **kwargs)
-        return ret
     
     cdef inline void _range(self, int stop_inclusive, int start_inclusive):
         '''
@@ -227,16 +178,13 @@ cdef class SBA:
             i += 1
             val -= 1
     
-    cdef inline void _default(self):
-        # Set [len - 1, ..., 2, 1, 0]
-        self._range(self.len.len - 1, 0)
-    
-    cdef setFromRange(self, int stop_inclusive, int start_inclusive):
+    cdef int setFromRange(self, int stop_inclusive, int start_inclusive) except -1:
         if stop_inclusive < start_inclusive:
             raise SBAException("stop must be >= start")
         self.raiseIfViewing()
-        cdef int cap = stop_inclusive - start_inclusive + 1
-        self._init(cap)
+        self.cap = stop_inclusive - start_inclusive + 1
+        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
+        self.len.len = cap
         self._range(stop_inclusive, start_inclusive)
     
     @staticmethod
@@ -250,17 +198,20 @@ cdef class SBA:
         return SBA.fromRange(stop_inclusive, start_inclusive)
 
     cdef setFromCapacity(self, int initial_capacity, bint set_default = True):
-        # Replace's this SBA's data.  
-        # set_default: set to default value, otherwise leaves indices uninitialized and len = 0.  
+        # set_default: set indices to default value, otherwise leaves indices uninitialized and len = 0.  
         if initial_capacity < 0:
             raise SBAException("cap must be non-negative!")
         self.raiseIfViewing()
-        self._init(initial_capacity, set_default)
+        self.cap = initial_capacity
+        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
         if set_default:
-            self._default()
+            self.len.len = self.cap
+            self._range(self.len.len - 1, 0)
+        else:
+            self.len.len = 0
 
     @staticmethod
-    cdef SBA fromCapacity(int initial_capacity = 0, bint set_default = 1):
+    cdef SBA fromCapacity(int initial_capacity = 0, bint set_default = True):
         cdef SBA ret = SBA.__new__(SBA)
         ret.setFromCapacity(initial_capacity, set_default)
         return ret
@@ -270,9 +221,50 @@ cdef class SBA:
         return SBA.fromCapacity(initial_capacity, True)
     
     cdef inline _lengthen_if_needed(self, int length_override = -1):
+        # lengthen the indices if the capacity has been reached.
+        # if length_override is specified, then use it as the current length instead of the SBA's length.
         if (self.len.len if length_override == -1 else length_override) >= self.cap: # ==
             self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
             self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
+        
+    def set_from_iterable(self, obj: Iterable[int], bint verify = True):
+        self.raiseIfViewing()
+        cdef int ln = <int>len(obj)
+        self.cap = ln
+        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
+        self.len.len = cap
+        if do_sba_checking and verify:
+            for i in range(ln - 1):
+                if obj[i] <= obj[i + 1]:
+                    raise SBAException("Indices must be in descending order, with no duplicates.")
+        for i in range(ln):
+            self.indices[i] = obj[i]
+    
+    @staticmethod
+    def from_iterable(*args, **kwargs) -> SBA:
+        cdef SBA ret = SBA.__new__(SBA)
+        ret._set_from_iterable(*args, **kwargs)
+        return ret
+    
+    def set_from_dense_iterable(self, obj: Iterable, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
+        self.raiseIfViewing()
+        self.cap = 0
+        self.len.len = 0
+        PyMem_Free(self.indices)
+        self.indices = NULL
+        if not hasattr(filter, "__call__"):
+            filter = lambda x:x!=0
+        for i in range(len(obj)):
+            if filter(obj[i]):
+                self._lengthen_if_needed()
+                self.indices[self.len.len] = ln - i - i if reverse else i
+                self.len.len += 1
+    
+    @staticmethod
+    def from_dense_iterable(*args, **kwargs) -> SBA:
+        cdef SBA ret = SBA.__new__(SBA)
+        ret.set_from_dense_iterable(*args, **kwargs)
+        return ret 
     
     # cdef setFromDenseBuffer(self, buf, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
     #     self._init(0)
