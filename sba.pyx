@@ -9,7 +9,7 @@ from cpython.object cimport Py_EQ, Py_NE, Py_LT, Py_LE, Py_GE, Py_GT
 from cpython.mem cimport PyMem_Realloc, PyMem_Malloc, PyMem_Free
 from libc.stdlib cimport rand, srand, RAND_MAX
 from libc.string cimport memset, memcpy, memmove
-from libc.limits cimport INT_MIN
+from libc.limits cimport INT_MAX
 from typing import Iterable, Union, Callable
 
 '''
@@ -40,11 +40,11 @@ cdef extern from "numpy/arrayobject.h":
     void PyArray_ENABLEFLAGS(np.ndarray arr, int flags)
 
 cdef fused const_numeric:
-    const short[::1]
-    const int[::1]
-    const long[::1]
-    const float[::1]
-    const double[::1]
+    const short
+    const int
+    const long
+    const float
+    const double
 
 class SBAException(Exception):
     pass
@@ -64,6 +64,9 @@ cdef class SBA:
     # snake case indicates the python function, lower camel case is for the c function.
     # cython doesn't support cpdef with @staticmethod, which neccessitates this ^
 
+    def __init__(self):
+        pass
+
     @staticmethod
     cdef verifyInput(bint enable):
         do_sba_verify = enable
@@ -75,18 +78,18 @@ cdef class SBA:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
     
-    cdef inline void range(self, int stop_inclusive, int start_inclusive):
+    cdef inline void range(self, int start_inclusive, int stop_inclusive):
         '''
         sets the indicies' values  
-        ensure stop >= start  
-        [stop, stop - 1, ..., start + 1, start]
+        ensure start <= stop  
+        [start, start + 1, ..., stop - 1, stop]
         '''
         cdef int i = 0
-        cdef int val = stop_inclusive
-        while val >= start_inclusive:
+        cdef int val = start_inclusive
+        while val <= stop_inclusive:
             self.indices[i] = val
             i += 1
-            val -= 1
+            val += 1
     
     cdef inline lengthenIfNeeded(self, int length_override = -1):
         '''
@@ -106,23 +109,23 @@ cdef class SBA:
             self.shorten()
     
     @staticmethod
-    cdef SBA fromRange(int stop_inclusive, int start_inclusive):
-        if stop_inclusive < start_inclusive:
-            raise SBAException("stop must be >= start")
+    cdef SBA fromRange(int start_inclusive, int stop_inclusive):
+        if start_inclusive > stop_inclusive:
+            raise SBAException("start must be <= stop")
         cdef SBA ret = SBA.__new__(SBA)
         # ret.views = 0 # implicit since initialization guarantees 0s in memory. Keep this in mind for all factory methods.
         ret.cap = stop_inclusive - start_inclusive + 1
         ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
-        ret.range(stop_inclusive, start_inclusive)
+        ret.range(start_inclusive, stop_inclusive)
         ret.len.len = ret.cap
         return ret
 
     @staticmethod
-    def from_range(stop_inclusive, start_inclusive):
-        return SBA.fromRange(stop_inclusive, start_inclusive)
+    def from_range(start_inclusive, stop_inclusive):
+        return SBA.fromRange(start_inclusive, stop_inclusive)
 
     @staticmethod
-    cdef SBA fromCapacity(int cap = 0, bint default = True):
+    cdef SBA fromCapacity(int cap, bint default = True):
         '''
         the `default` parameter is not documented in the python stub since is should only be used in this file.
         if default is True:  
@@ -137,11 +140,11 @@ cdef class SBA:
         ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
         if default:
             ret.len.len = ret.cap
-            ret.range(ret.len.len - 1, 0)
+            ret.range(0, ret.len.len - 1)
         return ret
     
     @staticmethod
-    def from_capacity(cap):
+    def from_capacity(cap=0):
         return SBA.fromCapacity(cap)
     
     @staticmethod
@@ -151,9 +154,11 @@ cdef class SBA:
         if filter is None:
             # iterable is a sparse array
             if do_sba_verify if verify is None else verify:
-                for i in range(ln):
-                    if obj[i] <= obj[i + 1]:
-                        raise SBAException("Indices must be in descending order, with no duplicates.")
+                for i in range(ln - 1):
+                    if type(obj[i]) is not int:
+                        raise SBAException("Indices must be ints.")
+                    if obj[i] >= obj[i + 1]:
+                        raise SBAException("Indices must be in ascending order, with no duplicates.")
             ret.cap = ln
             ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
             ret.len.len = ret.cap
@@ -161,19 +166,17 @@ cdef class SBA:
                 ret.indices[i] = obj[i] # implicit check within c int range for each element
         else:
             # iterable is a dense array
-            t = range(ln)
-            if not reverse:
-                t = reversed(t)
-            for i in t:
-                if filter(obj[i]):
+            i = 0
+            while i < ln:
+                if filter(obj[ln - i - 1 if reverse else i]):
                     ret.lengthenIfNeeded()
-                    ret.indices[ret.len.len] = ln - i - 1 if reverse else i
+                    ret.indices[ret.len.len] = i
                     ret.len.len += 1
+                i += 1
         return ret
 
     @staticmethod
-    def from_buffer(const_numeric buf, filter: Union[None, Callable[[Union[int, float]], bool]] = None, *, bint copy = True, bint reverse = False, verify = None):
-        # couldn't make cdef fromBuffer factory method due to fused type specialization
+    def from_buffer(const_numeric[:] buf, filter: Union[None, Callable[[Union[int, float]], bool]] = None, *, bint copy = True, bint reverse = False, verify = None):
         cdef SBA ret = SBA.__new__(SBA)
         cdef int ln = <int>buf.shape[0] 
         cdef int i
@@ -181,33 +184,31 @@ cdef class SBA:
             ret.len.len = ln
             if do_sba_verify if verify is None else verify:
                 i = 0
-                while i < ret.len.len:
-                    if buf[i] <= buf[i + 1]:
-                        raise SBAException("Indices must be in descending order, with no duplicates.")
+                while i < ln - 1:
+                    if buf[i] >= buf[i + 1]:
+                        raise SBAException("Indices must be in ascending order, with no duplicates.")
                     i += 1
-            if copy: 
+            if copy:
                 ret.cap = ret.len.len
                 ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
                 i = 0
                 while i < ln:
                     ret.indices[i] = <int>buf[i]
+                    i += 1
             else:
-                if buf.type != int:
+                if const_numeric is not int:
                     raise SBAException("Buffer type must be c int when creating SBA by reference to buffer.")
                 ret.views = 1 # lock-out changing mem
                 # ret.cap not set since it should not be used in this SBA
                 ret.indices = <int*>&buf[0]
         else:
-            i = 0 if reverse else ln - 1
-            while i < ln if reverse else i > -1:
-                if filter(buf[i]):
+            i = 0
+            while i < ln:
+                if filter(buf[ln - i - 1 if reverse else i]):
                     ret.lengthenIfNeeded()
-                    ret.indices[ret.len.len] = ln - i - 1 if reverse else i
+                    ret.indices[ret.len.len] = i
                     ret.len.len += 1
-                if reverse:
-                    i += 1
-                else:
-                    i -= 1
+                i += 1
         return ret 
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
@@ -299,18 +300,18 @@ cdef class SBA:
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle = 0
-        cdef int mid_val = INT_MIN
+        cdef int mid_val = INT_MAX
         while left <= right:
             middle = (right + left) >> 1
             mid_val = self.indices[middle]
-            if mid_val > index:
+            if mid_val < index:
                 left = middle + 1
-            elif mid_val < index:
+            elif mid_val > index:
                 right = middle - 1
             else:
                 return; # skip duplicate
 
-        if index < mid_val:
+        if index > mid_val:
             middle += 1
 
         self.lengthenIfNeeded()
@@ -332,7 +333,7 @@ cdef class SBA:
                 memmove(self.indices + middle, self.indices + middle + 1, (self.len.len - middle) * sizeof(self.indices[0]))
                 self.shortenIfNeeded()
                 return
-            elif mid_val > index:
+            elif mid_val < index:
                 left = middle + 1
             else:
                 right = middle - 1
@@ -362,8 +363,8 @@ cdef class SBA:
         self.__delitem__(index)
         self.turnOn(value)
     
-    cdef SBA getSection(self, int stop_inclusive, int start_inclusive):
-        # stop >= start
+    cdef SBA getSection(self, int start_inclusive, int stop_inclusive):
+        # start <= stop
         cdef SBA ret
         if ALLOC_THEN_SHRINK:
             ret = SBA.fromCapacity(stop_inclusive - start_inclusive + 1, False)
@@ -376,17 +377,17 @@ cdef class SBA:
         while left <= right:
             middle = (right + left) >> 1
             mid_val = self.indices[middle]
-            if mid_val == stop_inclusive:
+            if mid_val == start_inclusive:
                 break
-            elif mid_val > stop_inclusive:
+            elif mid_val < start_inclusive:
                 left = middle + 1
             else:
                 right = middle - 1
-        if stop_inclusive < mid_val:
+        if start_inclusive > mid_val:
             middle += 1
             mid_val = self.indices[middle]
 
-        while mid_val >= start_inclusive:
+        while mid_val <= stop_inclusive:
             if not ALLOC_THEN_SHRINK:
                 ret.lengthenIfNeeded()
             ret.indices[ret.len.len] = mid_val
@@ -403,7 +404,7 @@ cdef class SBA:
         if isinstance(index, slice):
             start = self.indices[0] if index.start is None else index.start
             stop = self.indices[len(self) - 1] if index.stop is None else index.stop
-            return self.get(stop, start)
+            return self.get(start, stop)
         else:
             return self.indices[self._checkIndex(index)]
 
@@ -445,10 +446,10 @@ cdef class SBA:
         cdef int r_len = 0
         SBA._get_both(a, &a_offset, &a_val, &a_nempty, b, &b_offset, &b_val, &b_nempty)
         while a_nempty or b_nempty:
-            if (a_nempty and not b_nempty) or (a_nempty and b_nempty and a_val > b_val):
+            if (a_nempty and not b_nempty) or (a_nempty and b_nempty and a_val < b_val):
                 SBA._add_to_output(<SBA>r, &r_len, a_val, len_only)
                 SBA._get_one(a, &a_offset, &a_val, &a_nempty)
-            elif (not a_nempty and b_nempty) or (a_nempty and b_nempty and a_val < b_val):
+            elif (not a_nempty and b_nempty) or (a_nempty and b_nempty and a_val > b_val):
                 SBA._add_to_output(<SBA>r, &r_len, b_val, len_only)
                 SBA._get_one(b, &b_offset, &b_val, &b_nempty)
             elif a_nempty and b_nempty and a_val == b_val:
@@ -507,9 +508,9 @@ cdef class SBA:
         cdef int r_len = 0
         SBA._get_both(a, &a_offset, &a_val, &a_nempty, b, &b_offset, &b_val, &b_nempty)
         while a_nempty and b_nempty:
-            if a_val > b_val:
+            if a_val < b_val:
                 SBA._get_one(a, &a_offset, &a_val, &a_nempty)
-            elif a_val < b_val:
+            elif a_val > b_val:
                 SBA._get_one(b, &b_offset, &b_val, &b_nempty)
             else: # ==
                 SBA._add_to_output(<SBA>r, &r_len, a_val, len_only)
@@ -582,7 +583,7 @@ cdef class SBA:
             mid_val = self.indices[middle]
             if mid_val == index:
                 return True
-            elif mid_val > index:
+            elif mid_val < index:
                 left = middle + 1
             else:
                 right = middle - 1
@@ -592,7 +593,7 @@ cdef class SBA:
         if index2 is None:
             return self.getBit(index1)
         else:
-            if index2 > index1:
+            if index2 < index1:
                 tmp = index2
                 index2 = index1
                 index1 = tmp
@@ -636,7 +637,7 @@ cdef class SBA:
             if rm_offset < rm.len.len:
                 a_val = self.indices[a_from]
                 rm_val = rm.indices[rm_offset]
-                if rm_val > a_val:
+                if rm_val < a_val:
                     rm_offset += 1
                     continue
                 elif rm_val == a_val:
@@ -702,7 +703,7 @@ cdef class SBA:
             return True if op == Py_EQ else False
         else:
             for i in range(min(self.len.len, other.len.len)):
-                if self.indices[i] < other.indices[i]:
+                if self.indices[self.len.len - i - 1] < other.indices[other.len.len - i - 1]:
                     return True if op == Py_LE or op == Py_LT else False
             if self.len.len == other.len.len:
                 return op == Py_LE or op == Py_GE
@@ -754,7 +755,7 @@ cdef class SBA:
         ret.len.len = num_on_bits
         cdef int start_offset = <int>roundf((length - num_on_bits) * input)
         for i in range(num_on_bits):
-            ret.indices[i] = start_offset + num_on_bits - i - 1
+            ret.indices[i] = start_offset + i
         return ret
     
     @staticmethod
@@ -768,20 +769,20 @@ cdef class SBA:
         cdef float progress = input / period
         progress = progress - <int>progress
         cdef int start_offset = <int>roundf(progress * length)
-        cdef int num_wrapper
-        cdef int num_leading
+        cdef int index_wrap
+        cdef int index_leading
         if start_offset + num_on_bits > length:
-            num_wrapper = start_offset + num_on_bits - length
-            while num_wrapper >= 0:
-                num_wrapper -= 1
-                ret.indices[num_on_bits - num_wrapper - 1] = num_wrapper
-            num_leading = length - num_wrapper
-            while num_leading >= 0:
-                num_leading -= 1
-                ret.indices[num_leading] = length - num_leading - 1
+            index_wrap = start_offset + num_on_bits - length
+            index_leading = index_wrap
+            while index_wrap > 0:
+                index_wrap -= 1
+                ret.indices[index_wrap] = index_wrap
+            while index_leading < num_on_bits:
+                ret.indices[index_leading] = length - (num_on_bits - index_leading)
+                index_leading += 1
         else:
             for i in range(num_on_bits):
-                ret.indices[i] = num_on_bits - i - 1 + start_offset
+                ret.indices[i] = start_offset + i
         return ret
 
     @staticmethod

@@ -23,7 +23,7 @@ class SBA:
         This is enabled by default.
 
         When an SBA is created via `from_iterable` or `from_buffer`,
-        verify ensures that indices are in descending order with no duplicates.
+        verify ensures that indices are in ascending order with no duplicates.
 
         If the `verify` arg in specified in `from_iterable` or `from_buffer`,
         then the arg has precedence over the setting specified by this function.
@@ -56,10 +56,10 @@ class SBA:
         If `filter` is not specified:
             The input iterable is a sparse array, and contains the indices to be used in this SBA.
         ```python
-        >>> SBA.from_iterable([5, 2, 0])
-        [5 2 0]
+        >>> SBA.from_iterable([0, 2, 5])
+        [0 2 5]
         ```
-            `verify` ensures the indices are descending and without duplicates. If specified, overrides setting in `verify_input()`
+            `verify` ensures the indices are ascending and without duplicates. If specified, overrides setting in `verify_input()`
 
         ==========================================
 
@@ -70,9 +70,9 @@ class SBA:
 
         ```python
         >>> SBA.from_iterable([1, 0, 0, 1, 1], filter = lambda x : x != 0)
-        [4 3 0]
+        [0 3 4]
         >>> SBA.from_iterable([1, 0, 0, 1, 1], filter = lambda x : x != 0, reverse = True)
-        [4 1 0]
+        [0 1 4]
         ``` 
         '''
     
@@ -87,12 +87,12 @@ class SBA:
         If `filter` is not specified:
             The input buffer is a sparse array, and contains the indices to be used in this SBA.
         ```python
-        >>> SBA.from_buffer([5, 2, 0])
-        [5 2 0]
+        >>> SBA.from_buffer(SBA.from_range(0, 9))
+        [0 1 2 3 4 5 6 7 8 9]
         ```
             `copy` gives a separate copy of the data to the SBA. If `copy` is `False`, the SBA keeps a read-only reference to the buffer.
 
-            `verify` ensures the indices are descending and without duplicates. If specified, overrides setting in `verify_input()`
+            `verify` ensures the indices are ascending and without duplicates. If specified, overrides setting in `verify_input()`
 
         ==========================================
 
@@ -104,37 +104,17 @@ class SBA:
         ```python
         >>> a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
         >>> SBA.from_buffer(a, lambda x : x != 0)
-        [5 3]
+        [3 5]
         >>> SBA.from_buffer(a, lambda x : x != 0, reverse=True)
-        [2 0]
+        [0 2]
         ``` 
         '''
     
-    def from_np(np_arr, deep_copy = True, verify = True) -> SBA:
-        '''
-        Creates and initializes an SBA from a numpy array.  
-        `deep_copy`:  
-            True: The sba gets a separate copy of the data.  
-            False: The sba gets a read-only reference to the data.
-                The underlying data must not be modified from numpy while it is being viewed by an SBA.
-                If the indices are modified to be no-longer valid,
-                then incorrect values may be obtained from binary ops (but segfaults will not occur).
-        `verify`: check that all elements are valid (descending order, no duplicates).
-        ```python
-        >>> SBA.from_np(np.array([5, 2, 0], np.intc)) # intc needed to work cross-platform
-        [5 2 0]
-        >>> a = SBA.from_np(np.array([5, 2, 0]), deep_copy=False) 
-        >>> a[0] = 3 # raises exception since it's read-only.
-        ```
-        '''
-    
-    def to_np(self, give_ownership = True) -> numpy.ndarray:
+    def to_buffer(self, give_ownership = True) -> numpy.ndarray:
         '''
         Create a numpy array.  
         `give_ownership`:  
             True: Makes the returned numpy array the owner of the data, and clears this SBA's reference to the data.  
-                By "clearing" the reference to the data, it sets itself to an empty SBA, but this may be subject to change.  
-                To be safe, don't use an SBA after calling to_np(False) on it.
             False: The returned numpy array gets a read-only buffer to the data.
                 While the data is being used, it is locked out from being changed by this SBA.
         '''
@@ -143,14 +123,14 @@ class SBA:
         '''
         Prints the underlying allocated memory for the indices, and indicates where the used memory ends.
         ```python
-        >>> a = SBA([5, 2, 0])
+        >>> a = SBA.from_iterable([0, 2, 5])
         >>> a.print_raw()
             V
-        5 2 0
-        >>> a.set_bit(5, False)
+        0 2 5
+        >>> a.set_bit(0, False)
         >>> a.print_raw()       
           V
-        2 0 0
+        2 5 5
         ```
         '''
     
@@ -164,12 +144,11 @@ class SBA:
         '''
         Turns OFF a bit, as indicated by `index`: a position in the SBA,  
         then turns ON a bit indicated by `value`: a bit in the array.  
-        Not to be confused with set_bit.
         ```python
-        >>> a = SBA([15, 10, 5, 0])
-        >>> a[2] = 6
+        >>> a = SBA.from_iterable([0, 5, 10, 15])
+        >>> a[2] = 1
         >>> a
-        [15 10 6 0]
+        [0 1 5 15]
         ```
         '''
 
@@ -179,18 +158,18 @@ class SBA:
         if `index` is an `int`:  
             Returns a bit as indicated by a position in the SBA.  
         ```python
-        >>> SBA([4, 3, 2, 1])[-2]
-        2
+        >>> SBA.from_iterable([1, 2, 3, 4])[-2]
+        3
         ```
 
         if `index` is a `slice`:  
             Returns the bits in the array within the specified range (inclusive stop, inclusive start).  
             The specified step is ignored (uses 1).  
         ```python
-        >>> SBA([15, 10, 2, 1])[15:2]
-        [15 10 2]
-        >>> SBA(range(0, 10000, 2))[100:110]
-        [110 108 106 104 102 100]
+        >>> SBA.from_iterable([1, 2, 10, 15])[15:2]
+        [2 10 15]
+        >>> SBA.from_iterable(range(0, 1000, 2))[100:110]
+        [100 102 104 106 108 110]
         '''
     
     @overload
@@ -226,17 +205,17 @@ class SBA:
         if `other` is an `int`:
             Returns SBA with specified bit set to ON.
         ```python
-        >>> SBA([2, 1]) + 0
-        [2 1 0]
+        >>> SBA.from_iterable([1, 2]) + 0
+        [0, 1, 2]
         ```
 
         if `other` is an `Iterable`:
             Returns self OR other.
         ```python
-        >>> SBA([3, 2]) + SBA([2, 1])
-        [3 2 1]
-        >>> SBA([2, 1]) + [5, 0, 2]
-        [5 2 1 0]
+        >>> SBA.from_iterable([2, 3]) + SBA.from_iterable([1, 2])
+        [1 2 3]
+        >>> SBA([1, 2]) + [5, 0, 2]
+        [0 1 2 5]
         ```
         '''
     
@@ -254,21 +233,19 @@ class SBA:
         if index2 is left blank:  
             Returns the state of a bit as indicated by the position in the array.  
         ```python
-            >>> SBA([3, 2]).get(3)
+            >>> SBA.from_iterable([2, 3]).get(3)
             True
         ```
         if index2 is specified:
-            returns an SBA of all elements in a section from index1 downto index2, inclusively.
+            returns an SBA of all elements in a section from index1 to index2, inclusively.
         ```python
-            >>> SBA([11, 9, 6, 2]).get(10, 1)
-            [9 6 2]
+            >>> SBA.from_iterable([2, 6, 9, 11]).get(10, 1)
+            [2 6 9]
         ```
         '''
     
     def __contains__(self, index: int) -> bool:
-        '''
-        Returns True if the specified index is contained in the SBA.  
-        '''
+        ''' Returns True if the specified index is contained in the SBA. '''
 
     recursive_numeric = Iterable[Union[int, float, recursive_numeric]]
 
@@ -278,30 +255,30 @@ class SBA:
         if `other` is an `int`:
             Returns the state of the bit.  
         ```python
-        >>> SBA([2, 1]) * 50
+        >>> SBA.from_iterable([1, 2]) * 50
         False
-        >>> SBA([2, 1]) * 2
+        >>> SBA.from_iterable([1, 2]) * 2
         True
         ```
 
         if `other` is an `SBA`:
             Returns self AND other.  
         ```python
-        >>> SBA([3, 2]) * SBA([2, 1])
+        >>> SBA.from_iterable([2, 3]) * SBA.from_iterable([1, 2])
         [2]
         ```
 
         if `other` is a `float`:
             Returns a random subsample, each bit has a chance of turning off.  
         ```python
-        >>> SBA([5, 4, 3, 2, 1, 0]) * (1 / 3)
-        [5, 2]
+        >>> SBA.from_iterable([0, 1, 2, 3, 4, 5]) * (1 / 3)
+        [2 5]
         ```
 
         if `other` is an `Iterable`:
             Returns the result of mul on each element.  
         ```python
-        >>> SBA([3, 2]) * [0, 3, [3, 2]]
+        >>> SBA.from_iterable([2, 3]) * [0, 3, [3, 2]]
         [False, True, [True, True]]
         ```
         '''
@@ -315,14 +292,14 @@ class SBA:
         if `other` is an `int`:
             Returns SBA with specified bit set to OFF.
         ```python
-        >>> SBA((2, 1)) - 2
+        >>> SBA.from_iterable((1, 2)) - 2
         [1]
         ```
 
         if `other` is an `Iterable`:
-            Returns self with all elements in other removed.
+            Returns cp with all elements in other removed.
         ```python
-        >>> SBA((3, 2, 1)) - SBA((3, 2))
+        >>> SBA.from_iterable((1, 2, 3)) - SBA.from_iterable((2, 3))
         [1]
         ```
         '''
@@ -358,7 +335,7 @@ class SBA:
             the output is scaled in-between.  
         ```python
         >>> SBA.encode(0.5, 3, 100)
-        [51 50 49]
+        [49 50 51]
         ```
         if `period` is specified:
             Encodes input such that it wraps back to 0 as it approaches a multiple of the period.
