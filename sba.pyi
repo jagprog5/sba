@@ -1,89 +1,113 @@
 from __future__ import annotations
 import numpy
-from typing import Iterable, Union, Optional, overload
+from typing import Iterable, Union, Optional, Callable, overload
 
 class SBAException(Exception):
     pass
 
 class SBA:
     '''
-    Instantiation through __init__ does a deep copy.  
-    For zero-copy, see the factory methods.
-    ```python
-    >>> SBA() # empty
-    []
-    >>> SBA(5) # initial capacity of 5
-    [4 3 2 1 0]
-    >>> SBA(5, 2) # 5 downto 2
-    [5 4 3 2]
-    >>> SBA(numpy.array([3, 2, 0])) # np
-    [3 2 0]
-    >>> SBA(SBA([5, 2, 0])) # buffer
-    [5, 2, 0]
-    >>> SBA([5, 2, 0]) # iterable
-    [5, 2, 0]
-    ```
+    SBAs can be instantiated through factory methods:
+
+    `from_capacity()`
+
+    `from_range()`
+
+    `from_iterable()`
+
+    `from_buffer()`
     '''
 
-    def enable_checking() -> None:
+    def verify_input(enable: bool):
         '''
-        This is enabled by default.  
-        On the creation of an SBA, ensure that indices are valid.  
-        The checks include:
-          - Each indice is of type int.
-          - Each indice is in c int range.
-          - Indices are in descending order, with no duplicates.
-        Note that the 'verify' arg in factory methods can disable checking for individual calls,
-        even if checking is enabled globally.  
-        '''
-    
-    def disable_checking() -> None:
-        '''
-        Disables the check that ensures indices are valid on SBA creation.  
-        This overrides the 'verify' param used in factory methods.  
+        This is enabled by default.
+
+        When an SBA is created via `from_iterable` or `from_buffer`,
+        verify ensures that indices are in descending order with no duplicates.
+
+        If the `verify` arg in specified in `from_iterable` or `from_buffer`,
+        then the arg has precedence over the setting specified by this function.
         '''
     
-    def from_iterable(obj: Iterable[int], verify: bool = True) -> SBA:
-        '''
-        Deep-copy iterable to init an SBA.  
-        `verify`: check that all elements are valid (integers, in int range, descending order, no duplicates). 
-        ```python
-        >>> SBA.from_iterable([5, 2, 0])
-        [5 2 0]
-        ``` 
-        '''
-    
-    def from_range(stop_inclusive: int, start_inclusive: int) -> SBA:
+    def from_range(start_inclusive: int, stop_inclusive: int) -> SBA:
         '''
         Initializes an SBA with specified range of bits set to ON.
         ```python
-        >>> SBA.from_range(3, -2)
-        [3 2 1 0 -1 -2]
+        >>> SBA.from_range(2, 5)
+        [2 3 4 5]
         ```
         '''
     
-    def from_capacity(initial_capacity: int = 0) -> SBA:
+    def from_capacity(capacity: int = 0) -> SBA:
         '''
-        Initializes an SBA with specified initial capacity.  
         ```python
         >>> SBA.from_capacity(5)
-        [4 3 2 1 0]
+        [0 1 2 3 4]
         ```
         '''
     
-    def from_dense(buffer, reverse = False, filter = lambda x: x != 0):
+    def from_iterable(obj: Iterable[int],
+                filter: Union[None, Callable[[Union[int, float]], bool]] = None, *,
+                verify: Optional[bool] = None,
+                reverse: bool = False) -> SBA:
         '''
-        Converts an array to an SBA.  
-        `buffer` is a memoryview to a contiguous list of type short, int, long, float, or double.  
-        `filter` should give True for elements that should should be placed in the SBA.  
+        Initializes an SBA from an iterable. 
+
+        If `filter` is not specified:
+            The input iterable is a sparse array, and contains the indices to be used in this SBA.
         ```python
-        >>> from array import array
-        >>> a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
-        >>> SBA.from_dense(a)
-        [2 0]
-        >>> SBA.from_dense(a, reverse=True)
-        [5 3]
+        >>> SBA.from_iterable([5, 2, 0])
+        [5 2 0]
         ```
+            `verify` ensures the indices are descending and without duplicates. If specified, overrides setting in `verify_input()`
+
+        ==========================================
+
+        If `filter` is specified:
+            The input iterable is a dense array. This SBA will contain the indices that satisfy the filter.
+
+            `reverse` flips the order of the indices.
+
+        ```python
+        >>> SBA.from_iterable([1, 0, 0, 1, 1], filter = lambda x : x != 0)
+        [4 3 0]
+        >>> SBA.from_iterable([1, 0, 0, 1, 1], filter = lambda x : x != 0, reverse = True)
+        [4 1 0]
+        ``` 
+        '''
+    
+    def from_buffer(buffer,
+            filter: Union[None, Callable[[Union[int, float]], bool]] = None, *,
+            copy: bool = True,
+            verify: Optional[bool] = None,
+            reverse: bool = False) -> SBA:
+        '''
+        Initializes an SBA from a buffer.
+
+        If `filter` is not specified:
+            The input buffer is a sparse array, and contains the indices to be used in this SBA.
+        ```python
+        >>> SBA.from_buffer([5, 2, 0])
+        [5 2 0]
+        ```
+            `copy` gives a separate copy of the data to the SBA. If `copy` is `False`, the SBA keeps a read-only reference to the buffer.
+
+            `verify` ensures the indices are descending and without duplicates. If specified, overrides setting in `verify_input()`
+
+        ==========================================
+
+        If `filter` is specified:
+            The input buffer is a dense array. This SBA will contain the indices that satisfy the filter.
+
+            `reverse` flips the order of the indices.
+
+        ```python
+        >>> a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
+        >>> SBA.from_buffer(a, lambda x : x != 0)
+        [5 3]
+        >>> SBA.from_buffer(a, lambda x : x != 0, reverse=True)
+        [2 0]
+        ``` 
         '''
     
     def from_np(np_arr, deep_copy = True, verify = True) -> SBA:

@@ -14,7 +14,7 @@ def get_random_indicies(n=100,m=100):
 
 class TestSBA(unittest.TestCase):
     def test_overloaded_ops(self):
-        a = SBA([6, 4, 2])
+        a = SBA.from_iterable([6, 4, 2])
         self.assertEqual(a + 3, [6, 4, 3, 2])
         self.assertEqual(a - 6, [4, 2])
         self.assertEqual(a * 6, True)
@@ -231,6 +231,10 @@ def speed_test():
     print(stop - start - sub)
 
 if __name__ == "__main__":
-    SBA.seed_rand()
-    unittest.main()
+    # SBA.seed_rand()
+    # unittest.main()
     # speed_test()
+
+    print(SBA.from_capacity(5))
+    # a = memoryview(array('h', [0, 0, 0, 2, 0, -1]))
+    # print(SBA.from_buffer(a, lambda x : x != 0, reverse=True))

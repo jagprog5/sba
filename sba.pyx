@@ -6,7 +6,7 @@ np.import_array()
 
 from cpython cimport Py_buffer, PyObject_CheckBuffer, PyBUF_WRITABLE, PyBUF_FORMAT, PyBUF_ND, PyBUF_STRIDES
 from cpython.object cimport Py_EQ, Py_NE, Py_LT, Py_LE, Py_GE, Py_GT
-from cpython.mem cimport PyMem_Realloc, PyMem_Free
+from cpython.mem cimport PyMem_Realloc, PyMem_Malloc, PyMem_Free
 from libc.stdlib cimport rand, srand, RAND_MAX
 from libc.string cimport memset, memcpy, memmove
 from libc.limits cimport INT_MIN
@@ -15,11 +15,11 @@ from typing import Iterable, Union, Callable
 '''
 There's two different ways of handling memory allocations when doing operations. It's not apparent which is better, so I'm leaving both as an option for now.
 ALLOC_THEN_SHRINK = True:
-    Allocate the maximum size required for the result, based off of the lengths of the operands. Then, shrink the result to the actual used size when complete.
+    Allocate the maximum size required for the result, based off of the lengths of the operands. Then, shrink the result to the actb ual used size when complete.
     For example, if A is of length 2, and B is of length 3, then A AND B will have at max a length of 2.
     This strategy would allocate an array of length 2, t hen shrink it down when the AND op is complete to free up the excess.
 ALLOC_THEN_SHRINK = False:
-    Continually realloc up from a length of 0 until the operation is done, according to SBA._lengthen_if_needed
+    Realloc up from a length of 0 until the operation is done, according to SBA.lengthenIfNeeded
 '''
 cdef bint ALLOC_THEN_SHRINK = False
 
@@ -49,127 +49,37 @@ cdef fused const_numeric:
 class SBAException(Exception):
     pass
 
-cdef union SBALen: # Needs little-endian
+cdef union SBALen:
     Py_ssize_t ssize_t_len # for use in buffer protocol
     int len # for normal use in SBA
 
-cdef bint do_sba_checking = True
+cdef bint do_sba_verify = True
 
 cdef class SBA:
     cdef int views # number of references to buffer
     cdef int cap # capacity, mem allocated for the indices
     cdef SBALen len # length, the number of ON bits in the array
-    cdef int* indices # contains indices of bits that are ON. From MSB to LSB, aka descending index value
+    cdef int* indices # contains indices of bits that are ON.
+
+    # snake case indicates the python function, lower camel case is for the c function.
+    # cython doesn't support cpdef with @staticmethod, which neccessitates this ^
 
     @staticmethod
-    def enable_checking():
-        do_sba_checking = True
+    cdef verifyInput(bint enable):
+        do_sba_verify = enable
     
-    @staticmethod
-    def disable_checking():
-        do_sba_checking = False
-    
-    cdef inline int _kwargs_whitelist(l, kwargs) except -1:
-        # throw exception if kwargs contains anything not in list.
-        good = all(elem in l for elem in kwargs)
-        if not good:
-            raise SBAException("Please remove irrelevant keyword arguments. It should only contain: " + str(l))
-    
-    def __init__(self, *args, **kwargs):
-        # wraps the factory methods. The specific factory method is inferred from the arguments.
-        if len(args) == 0:
-            if len(kwargs) == 0:
-                self.__init__(0)
-            elif 'capacity' in kwargs:
-                arg = kwargs.pop('capacity')
-                self.__init__(arg, **kwargs)
-            elif 'start' in kwargs:
-                arg = kwargs.pop('start')
-                self.__init__(arg, **kwargs)
-            elif 'stop' in kwargs:
-                raise SBAException("stop kwarg was specified without start kwarg.")
-            elif 'sparse' in kwargs:
-                if 'filter' in kwargs or 'dense' in kwargs:
-                    raise SBAException("Can't specify filter or dense for sparse.")
-                arg = kwargs.pop('sparse')
-                self.__init__(arg, **kwargs)
-            elif 'dense' in kwargs:
-                arg = kwargs.pop('dense')
-                if 'filter' not in kwargs:
-                    kwargs['filter'] = None
-                self.__init__(arg, **kwargs)
-            elif 'filter' in kwargs:
-                raise SBAException("Can't specify filter without positional arg or dense kwarg.")
-            else:
-                raise SBAException("Unknown kwargs: " + kwargs)
-        elif len(args) == 1:
-            if type(args[0]) == int:
-                # single integer positional arg
-                if 'start' in kwargs:
-                    if len(kwargs) > 1:
-                        raise SBAException("Please remove irrelevant arguments for range init.")
-                    self.setFromRange(args[0], kwargs['start'])
-                elif 'stop' in kwargs:
-                    if len(kwargs) > 1:
-                        raise SBAException("Please remove irrelevant arguments for range init.")
-                    self.setFromRange(kwargs['stop'], args[0])
-                else:
-                    if len(kwargs) > 0:
-                        raise SBAException("Please remove irrelevant arguments."
-                            + " The capacity argument should be standalone.")
-                    self.setFromCapacity(args[0])
-            elif PyObject_CheckBuffer(args[0]):
-                # single buffer positional arg
-                if 'filter' in kwargs:
-                    # single dense buffer positional arg
-                    SBA._kwargs_contains_only(['filter', 'reverse'], kwargs)
-                    self.setFromDenseBuffer(args[0],
-                            'reverse' in kwargs and kwargs['reverse'], # default False
-                            kwargs['filter'] if callable(kwargs['filter']) else None)
-                else:
-                    # single sparse buffer positional arg
-                    SBA._kwargs_contains_only(['copy', 'verify'], kwargs)
-                    self.setFromBuffer(args[0],
-                            'copy' not in kwargs or kwargs['copy'], # default True
-                            'verify' not in kwargs or kwargs['verify'])  # default True
-            else:
-                # single iterable positional arg
-                if 'filter' in kwargs:
-                    # single dense iterable positional arg
-                    SBA._kwargs_contains_only(['filter', 'reverse'], kwargs)
-                    self.set_from_dense_iterable(args[0],
-                            'reverse' in kwargs and kwargs['reverse'], # default False
-                            kwargs['filter'] if callable(kwargs['filter']) else None)
-                else:
-                    # single sparse iterable positional arg
-                    SBA._kwargs_contains_only(['verify'], kwargs)
-                    self.set_from_iterable(args[0], 'verify' in kwargs and kwargs['verify']) # default True
-        else:
-            # multiple positional arguments
-            if len(args) == 2 and type(args[0]) is int and type(args[1]) is int:
-                self.__init__(stop = args[0], start = args[1], **kwargs)
-            else:
-                for i in range(len(args)):
-                    arg = args[i]
-                    if callable(arg) or arg is None:
-                        del args[i]
-                        if STRICT_INIT and 'filter' in kwargs:
-                            raise SBAException("Multiple filters specified.")
-                        kwargs['filter'] = arg
-                        if len(args) == 1:
-                            self.__init__(args[0], **kwargs)
-                            return
-                if args[0], copy=True
-                raise SBAException("Bad positional arguments.") # cutting this short for maintainability.
-    
+    def verify_input(bint enable):
+        SBA.verifyInput(enable)
+
     cdef inline int raiseIfViewing(self) except -1:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
     
-    cdef inline void _range(self, int stop_inclusive, int start_inclusive):
+    cdef inline void range(self, int stop_inclusive, int start_inclusive):
         '''
-        stop >= start  
-        Set [stop, stop - 1, ..., start + 1, start]
+        sets the indicies' values  
+        ensure stop >= start  
+        [stop, stop - 1, ..., start + 1, start]
         '''
         cdef int i = 0
         cdef int val = stop_inclusive
@@ -178,164 +88,127 @@ cdef class SBA:
             i += 1
             val -= 1
     
-    cdef int setFromRange(self, int stop_inclusive, int start_inclusive) except -1:
-        if stop_inclusive < start_inclusive:
-            raise SBAException("stop must be >= start")
-        self.raiseIfViewing()
-        self.cap = stop_inclusive - start_inclusive + 1
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
-        self.len.len = cap
-        self._range(stop_inclusive, start_inclusive)
-    
-    @staticmethod
-    cdef SBA fromRange(int stop_inclusive, int start_inclusive):
-        cdef SBA ret = SBA.__new__(SBA)
-        ret.setFromRange(stop_inclusive, start_inclusive)
-        return ret
-    
-    @staticmethod
-    def from_range(stop_inclusive: int, start_inclusive: int) -> SBA:
-        return SBA.fromRange(stop_inclusive, start_inclusive)
-
-    cdef setFromCapacity(self, int initial_capacity, bint set_default = True):
-        # set_default: set indices to default value, otherwise leaves indices uninitialized and len = 0.  
-        if initial_capacity < 0:
-            raise SBAException("cap must be non-negative!")
-        self.raiseIfViewing()
-        self.cap = initial_capacity
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
-        if set_default:
-            self.len.len = self.cap
-            self._range(self.len.len - 1, 0)
-        else:
-            self.len.len = 0
-
-    @staticmethod
-    cdef SBA fromCapacity(int initial_capacity = 0, bint set_default = True):
-        cdef SBA ret = SBA.__new__(SBA)
-        ret.setFromCapacity(initial_capacity, set_default)
-        return ret
-
-    @staticmethod
-    def from_capacity(initial_capacity = 0) -> SBA:
-        return SBA.fromCapacity(initial_capacity, True)
-    
-    cdef inline _lengthen_if_needed(self, int length_override = -1):
-        # lengthen the indices if the capacity has been reached.
-        # if length_override is specified, then use it as the current length instead of the SBA's length.
+    cdef inline lengthenIfNeeded(self, int length_override = -1):
+        '''
+        lengthen the indices if the capacity has been reached.  
+        if length_override is specified, then use it as the current length instead of the SBA's length.
+        '''
         if (self.len.len if length_override == -1 else length_override) >= self.cap: # ==
             self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
             self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
-        
-    def set_from_iterable(self, obj: Iterable[int], bint verify = True):
-        self.raiseIfViewing()
-        cdef int ln = <int>len(obj)
-        self.cap = ln
+    
+    cdef inline shorten(self):
+        self.cap = self.len.len
         self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
-        self.len.len = cap
-        if do_sba_checking and verify:
-            for i in range(ln - 1):
-                if obj[i] <= obj[i + 1]:
-                    raise SBAException("Indices must be in descending order, with no duplicates.")
-        for i in range(ln):
-            self.indices[i] = obj[i]
-    
-    @staticmethod
-    def from_iterable(*args, **kwargs) -> SBA:
-        cdef SBA ret = SBA.__new__(SBA)
-        ret._set_from_iterable(*args, **kwargs)
-        return ret
-    
-    def set_from_dense_iterable(self, obj: Iterable, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
-        self.raiseIfViewing()
-        self.cap = 0
-        self.len.len = 0
-        PyMem_Free(self.indices)
-        self.indices = NULL
-        if not hasattr(filter, "__call__"):
-            filter = lambda x:x!=0
-        for i in range(len(obj)):
-            if filter(obj[i]):
-                self._lengthen_if_needed()
-                self.indices[self.len.len] = ln - i - i if reverse else i
-                self.len.len += 1
-    
-    @staticmethod
-    def from_dense_iterable(*args, **kwargs) -> SBA:
-        cdef SBA ret = SBA.__new__(SBA)
-        ret.set_from_dense_iterable(*args, **kwargs)
-        return ret 
-    
-    # cdef setFromDenseBuffer(self, buf, bint reverse = False, filter: Union[None, Callable[[Union[int, float]], bool]] = None):
-    #     self._init(0)
 
-    # self.setFromDenseBuffer(args[0],
-    #                         'reverse' in kwargs and kwargs['reverse'], # default False
-    #                         kwargs['filter'] if callable(kwargs['filter']) else None)
-    
-    cdef setFromDense(self, const_numeric buf, bint reverse = False, filter: Callable[[Union[int, float]], bool] = None):
-        self._init(0)
-        cdef int ln = len(buf)
-        cdef int i = ln - 1 if reverse else 0
-        while i > -1 if reverse else i < ln:
-            if buf[i] != 0 if filter is None else filter(buf[i]):
-                self._lengthen_if_needed() # allowing ALLOC_THEN_SHRINK = True here would not be practical
-                self.indices[self.len.len] = i if reverse else ln - i - 1
-                self.len.len += 1
-            if reverse:
-                i -= 1
-            else:
-                i += 1
+    cdef inline shortenIfNeeded(self):
+        if STRICT_SHORTEN or self.len.len < self.cap >> 1:
+            self.shorten()
     
     @staticmethod
-    def from_dense(const_numeric buf, bint reverse = 0, filter: Callable[[Union[int, float]], bool] = None):
+    cdef SBA fromRange(int stop_inclusive, int start_inclusive):
+        if stop_inclusive < start_inclusive:
+            raise SBAException("stop must be >= start")
         cdef SBA ret = SBA.__new__(SBA)
-        ret.setFromDense(buf, reverse, filter)
+        # ret.views = 0 # implicit since initialization guarantees 0s in memory. Keep this in mind for all factory methods.
+        ret.cap = stop_inclusive - start_inclusive + 1
+        ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+        ret.range(stop_inclusive, start_inclusive)
+        ret.len.len = ret.cap
         return ret
 
     @staticmethod
-    cdef inline bint _is_valid(const int[::1] arr):
-        cdef int i = 0
-        cdef int len = <int>arr.shape[0]
-        while i < len - 1:
-            if arr[i] <= arr[i + 1]:
-                return 0
-            i += 1
-        return 1
+    def from_range(stop_inclusive, start_inclusive):
+        return SBA.fromRange(stop_inclusive, start_inclusive)
 
-    cdef setFromBuffer(self, const int[::1] buf, bint deep_copy, bint verify = True):
-        self.raiseIfViewing()
-        if do_sba_checking and verify and not SBA._is_valid(buf):
-            raise SBAException("The buffer doesn't have valid indices.")
-        cdef int len = <int>buf.shape[0]
-        self._init(len)
-        self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
-        memcpy(self.indices, &buf[0], len * sizeof(self.indices[0]))
-
-    cdef setFromNp(self, np.ndarray[int, ndim=1] arr, bint deep_copy, bint verify = True):
-        self.raiseIfViewing()
-        if do_sba_checking and verify and not SBA._is_valid(arr):
-            raise SBAException("The numpy array doesn't have valid indices.")
-        cdef int len = <int>np.PyArray_DIMS(arr)[0]
-        cdef int* data = <int*>np.PyArray_DATA(arr)
-        self._init(len)
-        if deep_copy:
-            self.indices = <int*>PyMem_Realloc(self.indices, len * sizeof(self.indices[0]))
-            memcpy(self.indices, data, len * sizeof(data[0]))
+    @staticmethod
+    cdef SBA fromCapacity(int cap = 0, bint default = True):
+        '''
+        the `default` parameter is not documented in the python stub since is should only be used in this file.
+        if default is True:  
+            initalizes the indices such that they are descending from cap-1 to 0.  
+        else:  
+            allocate the capacity but leave it uninitialized, and sets this SBA's length to 0.
+        '''
+        if cap < 0:
+            raise SBAException("cap must be non-negative!")
+        cdef SBA ret = SBA.__new__(SBA)
+        ret.cap = cap
+        ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+        if default:
+            ret.len.len = ret.cap
+            ret.range(ret.len.len - 1, 0)
+        return ret
+    
+    @staticmethod
+    def from_capacity(cap):
+        return SBA.fromCapacity(cap)
+    
+    @staticmethod
+    def from_iterable(obj: Iterable[int], filter: Union[None, Callable[[Union[int, float]], bool]] = None, *, bint reverse = False, verify = None):
+        cdef SBA ret = SBA.__new__(SBA)
+        cdef int ln = <int>len(obj)
+        if filter is None:
+            # iterable is a sparse array
+            if do_sba_verify if verify is None else verify:
+                for i in range(ln):
+                    if obj[i] <= obj[i + 1]:
+                        raise SBAException("Indices must be in descending order, with no duplicates.")
+            ret.cap = ln
+            ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+            ret.len.len = ret.cap
+            for i in range(ln):
+                ret.indices[i] = obj[i] # implicit check within c int range for each element
         else:
-            PyMem_Free(self.indices)
-            self.indices = data
-            self.views = 1 # lock-out changing mem
-    
-    @staticmethod
-    cdef SBA fromNp(np.ndarray[int, ndim=1] arr, bint deep_copy, bint verify):
-        cdef SBA ret = SBA.__new__(SBA)
-        ret.setFromNp(arr, deep_copy, verify)
+            # iterable is a dense array
+            t = range(ln)
+            if not reverse:
+                t = reversed(t)
+            for i in t:
+                if filter(obj[i]):
+                    ret.lengthenIfNeeded()
+                    ret.indices[ret.len.len] = ln - i - 1 if reverse else i
+                    ret.len.len += 1
         return ret
-    
+
     @staticmethod
-    def from_np(np_arr, deep_copy = True, verify = True) -> SBA:
-        return SBA.fromNp(np_arr, deep_copy, verify)
+    def from_buffer(const_numeric buf, filter: Union[None, Callable[[Union[int, float]], bool]] = None, *, bint copy = True, bint reverse = False, verify = None):
+        # couldn't make cdef fromBuffer factory method due to fused type specialization
+        cdef SBA ret = SBA.__new__(SBA)
+        cdef int ln = <int>buf.shape[0] 
+        cdef int i
+        if filter is None:
+            ret.len.len = ln
+            if do_sba_verify if verify is None else verify:
+                i = 0
+                while i < ret.len.len:
+                    if buf[i] <= buf[i + 1]:
+                        raise SBAException("Indices must be in descending order, with no duplicates.")
+                    i += 1
+            if copy: 
+                ret.cap = ret.len.len
+                ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+                i = 0
+                while i < ln:
+                    ret.indices[i] = <int>buf[i]
+            else:
+                if buf.type != int:
+                    raise SBAException("Buffer type must be c int when creating SBA by reference to buffer.")
+                ret.views = 1 # lock-out changing mem
+                # ret.cap not set since it should not be used in this SBA
+                ret.indices = <int*>&buf[0]
+        else:
+            i = 0 if reverse else ln - 1
+            while i < ln if reverse else i > -1:
+                if filter(buf[i]):
+                    ret.lengthenIfNeeded()
+                    ret.indices[ret.len.len] = ln - i - 1 if reverse else i
+                    ret.len.len += 1
+                if reverse:
+                    i += 1
+                else:
+                    i -= 1
+        return ret 
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
         # Buffer protocol. Read-only 
@@ -374,10 +247,9 @@ cdef class SBA:
     def __releasebuffer__(self, Py_buffer *buffer):
         self.views -= 1
     
-    cdef np.ndarray toNp(self, bint give_ownership):
+    cdef np.ndarray toBuffer(self, bint give_ownership):
         if not give_ownership:
             return np.frombuffer(memoryview(self), dtype=np.intc)
-
         self.raiseIfViewing()
         cdef np.npy_intp* dims = <np.npy_intp*>&self.len.ssize_t_len
         cdef np.ndarray arr = np.PyArray_SimpleNewFromData(1, dims, np.NPY_INT, self.indices)
@@ -387,22 +259,14 @@ cdef class SBA:
         self.len.len = 0
         return arr
     
-    def to_np(self, give_ownership = True):
-        return self.toNp(give_ownership)
+    def to_buffer(self, give_ownership = True):
+        return self.toBuffer(give_ownership)
     
     def __dealloc__(self):
         if self.views == 0: # owner?
             PyMem_Free(self.indices)
     
     # =========================================================================================
-
-    cdef inline _shorten(self):
-        self.cap = self.len.len
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
-
-    cdef inline _shorten_if_needed(self):
-        if STRICT_SHORTEN or self.len.len < self.cap >> 1:
-            self._shorten()
 
     cdef printRaw(self):
         cdef int amount = 0
@@ -449,7 +313,7 @@ cdef class SBA:
         if index < mid_val:
             middle += 1
 
-        self._lengthen_if_needed()
+        self.lengthenIfNeeded()
         memmove(self.indices + middle + 1, self.indices + middle, (self.len.len - middle) * sizeof(self.indices[0]))
         self.len.len += 1
         self.indices[middle] = index
@@ -466,14 +330,14 @@ cdef class SBA:
             if mid_val == index:
                 self.len.len -= 1
                 memmove(self.indices + middle, self.indices + middle + 1, (self.len.len - middle) * sizeof(self.indices[0]))
-                self._shorten_if_needed()
+                self.shortenIfNeeded()
                 return
             elif mid_val > index:
                 left = middle + 1
             else:
                 right = middle - 1
     
-    def set(self, int index, bint state):
+    cpdef set(self, int index, bint state):
         if state:
             self.turnOn(index)
         else:
@@ -524,7 +388,7 @@ cdef class SBA:
 
         while mid_val >= start_inclusive:
             if not ALLOC_THEN_SHRINK:
-                ret._lengthen_if_needed()
+                ret.lengthenIfNeeded()
             ret.indices[ret.len.len] = mid_val
             ret.len.len += 1
             middle += 1
@@ -532,7 +396,7 @@ cdef class SBA:
                 break # ran off end
             mid_val = self.indices[middle]
         if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-            ret._shorten()
+            ret.shorten()
         return ret
     
     def __getitem__(self, index: Union[int, slice]) -> Union[int, SBA]:
@@ -564,7 +428,7 @@ cdef class SBA:
     cdef inline void _add_to_output(SBA r, int* r_len, int val, bint len_only):
         if not len_only:
             if not ALLOC_THEN_SHRINK:
-                r._lengthen_if_needed(r_len[0])
+                r.lengthenIfNeeded(r_len[0])
             r.indices[r_len[0]] = val
         r_len[0] += 1
 
@@ -596,7 +460,7 @@ cdef class SBA:
         else:
             (<SBA>r).len.len = r_len
             if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-                (<SBA>r)._shorten()
+                (<SBA>r).shorten()
     
     @staticmethod
     def orb(SBA a not None, SBA b not None) -> SBA:
@@ -655,7 +519,7 @@ cdef class SBA:
         else:
             (<SBA>r).len.len = r_len
             if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-                (<SBA>r)._shorten()
+                (<SBA>r).shorten()
     
     @staticmethod
     def andb(SBA a not None, SBA b not None) -> SBA:
@@ -724,7 +588,7 @@ cdef class SBA:
                 right = middle - 1
         return False
     
-    def get(self, index1, index2 = None) -> Union[bool, SBA]:
+    cpdef get(self, int index1, index2 = None):
         if index2 is None:
             return self.getBit(index1)
         else:
@@ -783,7 +647,7 @@ cdef class SBA:
             a_to += 1
             a_from += 1
         self.len.len = a_to
-        self._shorten_if_needed()
+        self.shortenIfNeeded()
         return self
     
     def __sub__(self, other):
@@ -828,7 +692,7 @@ cdef class SBA:
     def rand_int() -> int:
         return rand()
     
-    cdef bint compare(self, SBA other, int op):
+    cpdef bint compare(self, SBA other, int op):
         if op == Py_EQ or op == Py_NE:
             if self.len.len != other.len.len:
                 return False if op == Py_EQ else True
