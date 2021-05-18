@@ -41,8 +41,11 @@ cdef extern from "numpy/arrayobject.h":
 
 cdef fused const_numeric:
     const short
+    const unsigned short
     const int
+    const unsigned int
     const long
+    const unsigned long
     const float
     const double
 
@@ -53,7 +56,7 @@ cdef union SBALen:
     Py_ssize_t ssize_t_len # for use in buffer protocol
     int len # for normal use in SBA
 
-cdef bint do_sba_verify = True
+cdef bint do_sba_verify = True 
 
 cdef class SBA:
     cdef int views # number of references to buffer
