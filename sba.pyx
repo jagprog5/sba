@@ -347,7 +347,7 @@ cdef class SBA:
         else:
             self.turnOff(index)
 
-    cdef int _checkIndex(self, int index) except -1:
+    cdef int checkIndex(self, int index) except -1:
         if index >= self.len.len:
             raise SBAException("Index out of bounds.")
         if index < 0:
@@ -358,7 +358,7 @@ cdef class SBA:
     
     def __delitem__(self, index):
         self.raiseIfViewing()
-        cdef int i = self._checkIndex(index)
+        cdef int i = self.checkIndex(index)
         self.len.len -= 1
         memmove(&self.indices[i], &self.indices[i + 1], sizeof(int) * (self.len.len - i))
 
@@ -373,6 +373,8 @@ cdef class SBA:
             ret = SBA.fromCapacity(stop_inclusive - start_inclusive + 1, False)
         else:
             ret = SBA.__new__(SBA)
+        if self.len.len == 0:
+            return ret
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle
@@ -405,11 +407,14 @@ cdef class SBA:
     
     def __getitem__(self, index: Union[int, slice]) -> Union[int, SBA]:
         if isinstance(index, slice):
-            start = self.indices[0] if index.start is None else index.start
-            stop = self.indices[len(self) - 1] if index.stop is None else index.stop
-            return self.get(start, stop)
+            if self.len.len != 0:
+                start = self.indices[0] if index.start is None else index.start
+                stop = self.indices[self.len.len - 1] if index.stop is None else index.stop
+                return self.get(start, stop)
+            else:
+                return SBA()
         else:
-            return self.indices[self._checkIndex(index)]
+            return self.indices[self.checkIndex(index)]
 
     cpdef SBA cp(self):
         cdef SBA ret = SBA.fromCapacity(self.len.len, 0)
