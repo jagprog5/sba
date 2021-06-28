@@ -6,7 +6,9 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    ext_modules = cythonize("sba.pyx", annotate = True),
+    ext_modules = cythonize("*.pyx", 
+        annotate = True,
+        compiler_directives={'language_level' : "2"}),
     data_files=[('.', ['sba.pyi']),],
     include_dirs=[numpy.get_include()],
     name = "sparse-bit-array",
@@ -23,4 +25,3 @@ setup(
     python_requires = ">=3.6",
 )
 
- 

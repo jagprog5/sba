@@ -6,7 +6,7 @@ from array import array
 import numpy as np
 from time import time
 
-def get_random_indicies(n=100,m=100):
+def get_random_indices(n=100,m=100):
     ''' at most n elements from m-1 to -m '''
     l = list(dict.fromkeys([SBA.rand_int() % m - (m >> 1) for i in range(n)]))
     l.sort()
@@ -84,8 +84,6 @@ class Test(unittest.TestCase):
         arr[2] = 0
         self.assertTrue((arr == [0, 1, 0]).all())
 
-
-
     def test_set(self):
         a = SBA.from_iterable([1, 2, 5])
         a[1] = 8
@@ -112,12 +110,12 @@ class Test(unittest.TestCase):
         self.assertNotEqual(a, a_cp)
 
     def test_subsample(self):
-        a = SBA.from_iterable(get_random_indicies())
+        a = SBA.from_iterable(get_random_indices())
         a_cp = a.cp()
         a.subsample(0.5)
         self.assertTrue(len(a) <= len(a_cp))
         self.assertTrue(all([i in a_cp for i in a]))
-        self.assertEqual(a.subsample(0), [])
+        self.assertTrue(len(a_cp.subsample(0)) == 0)
 
     def test_encoding(self):
         self.assertEqual(SBA.encode(0.5, 3, 100), [51, 50, 49])
@@ -153,8 +151,8 @@ class Test(unittest.TestCase):
         self.assertEqual(b.andi(a), [2, 1])
 
     def test_and(self):
-        a = SBA.from_iterable(get_random_indicies())
-        b = SBA.from_iterable(get_random_indicies())
+        a = SBA.from_iterable(get_random_indices())
+        b = SBA.from_iterable(get_random_indices())
         c = SBA.andb(a, b)
         self.assertTrue(len(c) == SBA.andl(a, b))
         for i in c:
@@ -166,8 +164,8 @@ class Test(unittest.TestCase):
                 self.assertTrue(i != j)
     
     def test_or(self):
-        a = SBA.from_iterable(get_random_indicies())
-        b = SBA.from_iterable(get_random_indicies())
+        a = SBA.from_iterable(get_random_indices())
+        b = SBA.from_iterable(get_random_indices())
         c = SBA.orb(a, b)
         self.assertTrue(len(c) == SBA.orl(a, b))
         for i in c:
@@ -183,8 +181,8 @@ class Test(unittest.TestCase):
         self.assertTrue(len(b) == 0)
     
     def test_xor(self):
-        a = SBA.from_iterable(get_random_indicies())
-        b = SBA.from_iterable(get_random_indicies())
+        a = SBA.from_iterable(get_random_indices())
+        b = SBA.from_iterable(get_random_indices())
         c = SBA.xorb(a, b)
         self.assertTrue(len(c) == SBA.xorl(a, b))
         for i in c:
@@ -200,9 +198,9 @@ class Test(unittest.TestCase):
             self.assertTrue(i in b)
     
     def test_rm(self):
-        a = SBA.from_iterable(get_random_indicies())
+        a = SBA.from_iterable(get_random_indices())
         a_cp = a.cp()
-        rm = SBA.from_iterable(get_random_indicies())
+        rm = SBA.from_iterable(get_random_indices())
         rm_cp = rm.cp()
         a.rm(rm)
         self.assertTrue(rm == rm_cp)
@@ -216,8 +214,8 @@ class Test(unittest.TestCase):
 #     sub = 0
 #     for i in range(10000):
 #         substart = time()
-#         a = SBA.from_iterable(get_random_indicies(1000, 1000))
-#         b = SBA.from_iterable(get_random_indicies(1000, 1000))
+#         a = SBA.from_iterable(get_random_indices(1000, 1000))
+#         b = SBA.from_iterable(get_random_indices(1000, 1000))
 #         substop = time()
 #         sub += substop - substart
 #         SBA.andb(a, b)

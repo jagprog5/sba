@@ -269,7 +269,8 @@ class SBA:
         ```
 
         if `other` is a `float`:
-            Returns a random subsample, each bit has a chance of turning off.  
+            Returns a random subsample, where each bit has a chance of being turned off.  
+            See subsample().
         ```python
         >>> SBA.from_iterable([0, 1, 2, 3, 4, 5]) * (1 / 3)
         [2 5]
@@ -311,20 +312,30 @@ class SBA:
         ''' Turns off all bits that are in r. '''
     
     def shift(self, n: int) -> SBA:
-        ''' Shifts self by n places. A positive n is a left shift. '''
+        ''' Shifts self by n places. A positive n is a left (increase) shift. '''
     
     def seed_rand():
-        ''' Seeds c srand, for use in rand_int and subsample. '''
+        ''' Calls c stdlib srand. '''
     
     def rand_int() -> int:
-        ''' Returns random positive c int. See seed_rand. '''
+        ''' Returns random positive c int. Requires a prior call to seed_rand() '''
     
-    def subsample(self, amount: float) -> SBA:
-        ''' Returns a random subsample. See seed_rand. ''' 
+    def subsample(self, amount: Union[float, int]) -> SBA:
+        '''
+        Requires a prior call to seed_rand().
+
+        If `amount` is a `float`:  
+            Each bit has a chance of being turned off, where an amount of
+                0.0 returns an empty sba,
+                1.0 almost always returns a copy of this sba.
+        If `amount` is an `int`:
+            Randomly turns off bits until the length matches the amount.
+            If the length is already less than the amount then this does nothing.
+        ''' 
     
     def encode(input: float, num_on_bits: int, size: int, period: Optional[float]) -> SBA:
         '''
-        Encodes input as an SBA.
+        Encodes input as a Sparse Distributed Representation.
 
         `num_on_bits` is the length of the SBA.  
         `size` is the length of the underlying array being represented.  
