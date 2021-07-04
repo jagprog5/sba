@@ -21,42 +21,41 @@ cdef class SBA:
     cdef int* indices # contains indices of bits that are ON.
     
     @staticmethod
-    cdef verifyInput(bint enable)
-    cdef inline int raiseIfViewing(self) except -1
-    cdef inline void range(self, int start_inclusive, int stop_inclusive)
-    cdef inline lengthenIfNeeded(self, int length_override = -1)
-    cdef inline shorten(self)
-    cdef inline shortenIfNeeded(self)
+    cdef inline void c_verify_input(bint enable) 
+    cdef inline int raise_if_viewing(self) except -1
+    cdef inline void range(self, int start_inclusive, int stop_inclusive) 
+    cdef inline void lengthen_if_needed(self, int length_override = -1) nogil
+    cdef inline void shorten(self)
+    cdef inline void shorten_if_needed(self)
     @staticmethod
-    cdef SBA fromRange(int start_inclusive, int stop_inclusive)
+    cdef SBA c_from_range(int start_inclusive, int stop_inclusive)
     @staticmethod
-    cdef SBA fromCapacity(int cap, bint default)
-    cdef np.ndarray toBuffer(self, bint give_ownership)
-    cdef printRaw(self)
-    cdef turnOn(self, int index)
-    cdef turnOff(self, int index)
-    cpdef set(self, int index, bint state)
-    cdef inline int checkIndex(self, int index) except -1
-    cdef SBA getSection(self, int start_inclusive, int stop_inclusive)
+    cdef SBA c_from_capacity(int cap, bint default)
+    cpdef np.ndarray to_buffer(self, bint give_ownership = *)
+    cpdef print_raw(self)
+    cdef void turn_on(self, int index)
+    cdef void turn_off(self, int index)
+    cdef inline int check_index(self, int index) except -1
+    cdef SBA get_section(self, int start_inclusive, int stop_inclusive)
     cpdef SBA cp(self)
-    cdef inline void _get_one(SBA a, int* offset, int* value, bint* nempty)
-    cdef inline void _get_both(SBA a, int* a_offset, int* a_val, bint* a_empty, SBA b, int* b_offset, int* b_val, bint* b_empty)
-    cdef inline void _add_to_output(SBA r, int* r_len, int val, bint len_only)
+    cdef inline void _get_one(SBA a, int* offset, int* value, bint* nempty) nogil
+    cdef inline void _get_both(SBA a, int* a_offset, int* a_val, bint* a_empty, SBA b, int* b_offset, int* b_val, bint* b_empty) nogil
+    cdef inline void _add_to_output(SBA r, int* r_len, int val, bint len_only) nogil
     @staticmethod
-    cdef orc(void* r, SBA a, SBA b, bint exclusive, bint len_only)
+    cdef void orc(void* r, SBA a, SBA b, bint exclusive, bint len_only) nogil
     @staticmethod
-    cdef andc(void* r, SBA a, SBA b, bint len_only)
-    cdef bint getBit(self, int index)
-    cpdef rm(self, SBA rm)
-    cpdef shift(self, int n)
+    cdef void andc(void* r, SBA a, SBA b, bint len_only) nogil
+    cdef bint get_bit(self, int index)
+    cpdef void rm(self, SBA rm)
+    cpdef void shift(self, int n)
     @staticmethod
     cdef seedRand()
     cpdef bint compare(self, SBA other, int op)
     @staticmethod
     cdef int _qsort_compare(const void* a, const void* b) nogil
-    cdef subsampleLength(self, int amount)
-    cdef int subsamplePortion(self, float amount) except -1
+    cdef void subsample_length(self, int amount)
+    cdef int subsample_portion(self, float amount) except -1
     @staticmethod
-    cdef SBA encodeLinear(float input, int num_on_bits, int length)
+    cdef SBA encode_linear(float input, int num_on_bits, int length)
     @staticmethod
-    cdef SBA encodePeriodic(float input, float period, int num_on_bits, int length)
+    cdef SBA encode_periodic(float input, float period, int num_on_bits, int length)

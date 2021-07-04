@@ -1,15 +1,16 @@
+# cython: overflowcheck=False, boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True
 # distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
-from __future__ import print_function
 import numpy as np
 cimport numpy as np
 np.import_array()
 
-from cpython cimport Py_buffer, PyObject_CheckBuffer, PyBUF_WRITABLE, PyBUF_FORMAT, PyBUF_ND, PyBUF_STRIDES
+cimport cython
+from cython.parallel cimport prange
+from cpython cimport array, Py_buffer, PyObject_CheckBuffer, PyBUF_WRITABLE, PyBUF_FORMAT, PyBUF_ND, PyBUF_STRIDES
 from cpython.object cimport Py_EQ, Py_NE, Py_LT, Py_LE, Py_GE, Py_GT
-from cpython.mem cimport PyMem_Realloc, PyMem_Malloc, PyMem_Free
 from libc.stdlib cimport rand, srand, RAND_MAX, qsort
 from libc.string cimport memset, memcpy, memmove
-from libc.limits cimport INT_MAX
+from libc.limits cimport INT_MAX, INT_MIN
 from typing import Iterable, Union, Callable
 
 '''
@@ -19,12 +20,12 @@ ALLOC_THEN_SHRINK = True:
     For example, if A is of length 2, and B is of length 3, then A AND B will have at max a length of 2.
     This strategy would allocate an array of length 2, then shrink it down when the AND op is complete to free up the excess.
 ALLOC_THEN_SHRINK = False:
-    Realloc up from a length of 0 until the operation is done, according to SBA.lengthenIfNeeded
+    Realloc up from a length of 0 until the operation is done, according to SBA.lengthen_if_needed
 '''
 cdef bint ALLOC_THEN_SHRINK = False
 
 '''
-Always shorten the array when an op is complete. This may not be optimal with repeated calls to turnOff.
+Always shorten the array when an op is complete. This may not be optimal with repeated calls to turn_off.
 '''
 cdef bint STRICT_SHORTEN = False
 
@@ -36,26 +37,35 @@ cdef extern from "math.h":
 cdef extern from "time.h":
     void* time(void*)
 
+cdef extern from "object.h":
+    int Py_IS_TYPE(void*, void*) nogil
+
 cdef extern from "numpy/arrayobject.h":
+    void *PyArray_malloc(int nbytes) # it's not guarenteed that numpy uses the same mem allocator as python
+    void PyArray_free(void *ptr)
+    void *PyArray_realloc(void *ptr, int nbytes)
     void PyArray_ENABLEFLAGS(np.ndarray arr, int flags)
+    void *PyArray_DATA(void *arr)
 
 class SBAException(Exception):
     pass
 
 cdef bint do_sba_verify = True 
 
+@cython.final
 cdef class SBA:
     # snake case indicates the python function, lower camel case is for the c function.
     # cython doesn't support cpdef with @staticmethod, which neccessitates this ^
 
     @staticmethod
-    cdef verifyInput(bint enable):
+    cdef inline void c_verify_input(bint enable):
         do_sba_verify = enable
     
+    @staticmethod
     def verify_input(bint enable):
-        SBA.verifyInput(enable)
+        SBA.c_verify_input(enable)
 
-    cdef inline int raiseIfViewing(self) except -1:
+    cdef inline int raise_if_viewing(self) except -1:
         if self.views > 0:
             raise SBAException("Buffer is still being viewed, or is not owned!")
     
@@ -72,45 +82,45 @@ cdef class SBA:
             i += 1
             val += 1
     
-    cdef inline lengthenIfNeeded(self, int length_override = -1):
+    cdef inline void lengthen_if_needed(self, int length_override = -1) nogil:
         '''
         lengthen the indices if the capacity has been reached.  
         if length_override is specified, then use it as the current length instead of the SBA's length.
         '''
         if (self.len.len if length_override == -1 else length_override) >= self.cap: # ==
             self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
-            self.indices = <int*>PyMem_Realloc(self.indices, self.cap * sizeof(self.indices[0]))
+            with gil:
+                self.indices = <int*>PyArray_realloc(self.indices, sizeof(self.indices[0]) * self.cap)
     
-    cdef inline shorten(self):
+    cdef inline void shorten(self):
         self.cap = self.len.len
-        self.indices = <int*>PyMem_Realloc(self.indices, sizeof(self.indices[0]) * self.cap)
+        self.indices = <int*>PyArray_realloc(self.indices, sizeof(self.indices[0]) * self.cap)
 
-    cdef inline shortenIfNeeded(self):
+    cdef inline void shorten_if_needed(self):
         if STRICT_SHORTEN or self.len.len < self.cap >> 1:
             self.shorten()
     
     @staticmethod
-    cdef SBA fromRange(int start_inclusive, int stop_inclusive):
+    cdef SBA c_from_range(int start_inclusive, int stop_inclusive):
         if start_inclusive > stop_inclusive:
             raise SBAException("start must be <= stop")
         cdef SBA ret = SBA.__new__(SBA)
         # ret.views = 0 # implicit since initialization guarantees 0s in memory. Keep this in mind for all factory methods.
         ret.cap = stop_inclusive - start_inclusive + 1
-        ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+        ret.indices = <int*>PyArray_malloc(sizeof(ret.indices[0]) * ret.cap)
         ret.range(start_inclusive, stop_inclusive)
         ret.len.len = ret.cap
         return ret
 
     @staticmethod
-    def from_range(start_inclusive, stop_inclusive):
-        return SBA.fromRange(start_inclusive, stop_inclusive)
+    def from_range(int start_inclusive, int stop_inclusive):
+        return SBA.c_from_range(start_inclusive, stop_inclusive)
 
     @staticmethod
-    cdef SBA fromCapacity(int cap, bint default):
+    cdef SBA c_from_capacity(int cap, bint default):
         '''
-        the `default` parameter is not documented in the python stub since is should only be used in this file.
         if default is True:  
-            initalizes the indices such that they are descending from cap-1 to 0.  
+            initalizes the indices such that they are descending from 0 to cap-1.  
         else:  
             allocate the capacity but leave it uninitialized, and sets this SBA's length to 0.
         '''
@@ -118,15 +128,15 @@ cdef class SBA:
             raise SBAException("cap must be non-negative!")
         cdef SBA ret = SBA.__new__(SBA)
         ret.cap = cap
-        ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+        ret.indices = <int*>PyArray_malloc(sizeof(ret.indices[0]) * ret.cap)
         if default:
             ret.len.len = ret.cap
             ret.range(0, ret.len.len - 1)
         return ret
     
     @staticmethod
-    def from_capacity(cap=0):
-        return SBA.fromCapacity(cap, True)
+    def from_capacity(int cap=0):
+        return SBA.c_from_capacity(cap, True)
     
     @staticmethod
     def from_iterable(obj: Iterable[int], filter: Union[None, Callable[[Union[int, float]], bool]] = None, *, bint reverse = False, verify = None):
@@ -135,22 +145,25 @@ cdef class SBA:
         if filter is None:
             # iterable is a sparse array
             if do_sba_verify if verify is None else verify:
-                for i in range(ln - 1):
+                for i in range(ln):
                     if type(obj[i]) is not int:
-                        raise SBAException("Indices must be ints.")
+                        raise TypeError("Indices must be ints.")
+                    if obj[i] > INT_MAX or obj[i] < INT_MIN:
+                        raise SBAException("Indices ust be in c int range.")
+                for i in range(ln - 1):
                     if obj[i] >= obj[i + 1]:
                         raise SBAException("Indices must be in ascending order, with no duplicates.")
             ret.cap = ln
-            ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+            ret.indices = <int*>PyArray_malloc(sizeof(ret.indices[0]) * ret.cap)
             ret.len.len = ret.cap
             for i in range(ln):
-                ret.indices[i] = obj[i] # implicit check within c int range for each element
+                ret.indices[i] = obj[i]
         else:
             # iterable is a dense array
             i = 0
             while i < ln:
                 if filter(obj[ln - i - 1 if reverse else i]):
-                    ret.lengthenIfNeeded()
+                    ret.lengthen_if_needed()
                     ret.indices[ret.len.len] = i
                     ret.len.len += 1
                 i += 1
@@ -171,7 +184,7 @@ cdef class SBA:
                     i += 1
             if copy:
                 ret.cap = ret.len.len
-                ret.indices = <int*>PyMem_Malloc(sizeof(ret.indices[0]) * ret.cap)
+                ret.indices = <int*>PyArray_malloc(sizeof(ret.indices[0]) * ret.cap)
                 i = 0
                 while i < ln:
                     ret.indices[i] = <int>buf[i]
@@ -186,14 +199,14 @@ cdef class SBA:
             i = 0
             while i < ln:
                 if filter(buf[ln - i - 1 if reverse else i]):
-                    ret.lengthenIfNeeded()
+                    ret.lengthen_if_needed()
                     ret.indices[ret.len.len] = i
                     ret.len.len += 1
                 i += 1
-        return ret 
+        return ret
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
-        # Buffer protocol. Read-only 
+        # Buffer protocol. Read-only
         if buffer == NULL:
             raise BufferError("Buffer is NULL")
         if flags & PyBUF_WRITABLE:
@@ -226,13 +239,13 @@ cdef class SBA:
         
         self.views += 1
 
-    def __releasebuffer__(self, Py_buffer *buffer):
+    def __releasebuffer__(self, Py_buffer* buffer):
         self.views -= 1
     
-    cdef np.ndarray toBuffer(self, bint give_ownership):
+    cpdef np.ndarray to_buffer(self, bint give_ownership = False):
         if not give_ownership:
-            return np.frombuffer(memoryview(self), dtype=np.intc)
-        self.raiseIfViewing()
+            return np.frombuffer(self, dtype=np.intc)
+        self.raise_if_viewing()
         cdef np.npy_intp* dims = <np.npy_intp*>&self.len.ssize_t_len
         cdef np.ndarray arr = np.PyArray_SimpleNewFromData(1, dims, np.NPY_INT, self.indices)
         PyArray_ENABLEFLAGS(arr, np.NPY_ARRAY_OWNDATA)
@@ -241,16 +254,13 @@ cdef class SBA:
         self.len.len = 0
         return arr
     
-    def to_buffer(self, give_ownership = True):
-        return self.toBuffer(give_ownership)
-    
     def __dealloc__(self):
         if self.views == 0: # owner?
-            PyMem_Free(self.indices)
+            PyArray_free(self.indices)
     
     # =========================================================================================
 
-    cdef printRaw(self):
+    cpdef print_raw(self):
         cdef int amount = 0
         cdef int val
         if self.len.len != 0:
@@ -263,9 +273,6 @@ cdef class SBA:
         for i in range(self.cap):
             print(str(self.indices[i]) + " ", end='')
         print('')
-
-    def print_raw(self):
-        self.printRaw()
     
     def __repr__(self):
         return "[" + " ".join([str(self.indices[i]) for i in range(self.len.len)]) + "]"
@@ -276,8 +283,8 @@ cdef class SBA:
     def __len__(self):
         return self.len.len
     
-    cdef turnOn(self, int index):
-        self.raiseIfViewing()
+    cdef void turn_on(self, int index):
+        self.raise_if_viewing()
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle = 0
@@ -295,13 +302,13 @@ cdef class SBA:
         if index > mid_val:
             middle += 1
 
-        self.lengthenIfNeeded()
+        self.lengthen_if_needed()
         memmove(self.indices + middle + 1, self.indices + middle, (self.len.len - middle) * sizeof(self.indices[0]))
         self.len.len += 1
         self.indices[middle] = index
     
-    cdef turnOff(self, int index):
-        self.raiseIfViewing()
+    cdef void turn_off(self, int index):
+        self.raise_if_viewing()
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle = 0
@@ -312,20 +319,20 @@ cdef class SBA:
             if mid_val == index:
                 self.len.len -= 1
                 memmove(self.indices + middle, self.indices + middle + 1, (self.len.len - middle) * sizeof(self.indices[0]))
-                self.shortenIfNeeded()
+                self.shorten_if_needed()
                 return
             elif mid_val < index:
                 left = middle + 1
             else:
                 right = middle - 1
     
-    cpdef set(self, int index, bint state):
+    def set(self, int index, bint state):
         if state:
-            self.turnOn(index)
+            self.turn_on(index)
         else:
-            self.turnOff(index)
+            self.turn_off(index)
 
-    cdef inline int checkIndex(self, int index) except -1:
+    cdef inline int check_index(self, int index) except -1:
         if index >= self.len.len:
             raise SBAException("Index out of bounds.")
         if index < 0:
@@ -335,16 +342,16 @@ cdef class SBA:
         return index
     
     def __delitem__(self, index):
-        self.raiseIfViewing()
-        cdef int i = self.checkIndex(index)
+        self.raise_if_viewing()
+        cdef int i = self.check_index(index)
         self.len.len -= 1
         memmove(&self.indices[i], &self.indices[i + 1], sizeof(int) * (self.len.len - i))
 
     def __setitem__(self, index: int, value: int):
         self.__delitem__(index)
-        self.turnOn(value)
+        self.turn_on(value)
     
-    cdef SBA getSection(self, int start_inclusive, int stop_inclusive):
+    cdef SBA get_section(self, int start_inclusive, int stop_inclusive):
         # start <= stop
         cdef SBA ret
         if ALLOC_THEN_SHRINK:
@@ -372,7 +379,7 @@ cdef class SBA:
 
         while mid_val <= stop_inclusive:
             if not ALLOC_THEN_SHRINK:
-                ret.lengthenIfNeeded()
+                ret.lengthen_if_needed()
             ret.indices[ret.len.len] = mid_val
             ret.len.len += 1
             middle += 1
@@ -392,7 +399,7 @@ cdef class SBA:
             else:
                 return SBA()
         else:
-            return self.indices[self.checkIndex(index)]
+            return self.indices[self.check_index(index)]
 
     cpdef SBA cp(self):
         cdef SBA ret = SBA.fromCapacity(self.len.len, False)
@@ -401,26 +408,26 @@ cdef class SBA:
             ret.indices[i] = self.indices[i]
         return ret
     
-    cdef inline void _get_one(SBA a, int* offset, int* value, bint* nempty):
+    cdef inline void _get_one(SBA a, int* offset, int* value, bint* nempty) nogil:
         if offset[0] >= a.len.len:
             nempty[0] = 0
             return
         value[0] = a.indices[offset[0]]
         offset[0] += 1
     
-    cdef inline void _get_both(SBA a, int* a_offset, int* a_val, bint* a_empty, SBA b, int* b_offset, int* b_val, bint* b_empty):
+    cdef inline void _get_both(SBA a, int* a_offset, int* a_val, bint* a_empty, SBA b, int* b_offset, int* b_val, bint* b_empty) nogil:
         SBA._get_one(a, a_offset, a_val, a_empty)
         SBA._get_one(b, b_offset, b_val, b_empty)
     
-    cdef inline void _add_to_output(SBA r, int* r_len, int val, bint len_only):
+    cdef inline void _add_to_output(SBA r, int* r_len, int val, bint len_only) nogil:
         if not len_only:
             if not ALLOC_THEN_SHRINK:
-                r.lengthenIfNeeded(r_len[0])
+                r.lengthen_if_needed(r_len[0])
             r.indices[r_len[0]] = val
         r_len[0] += 1
 
     @staticmethod
-    cdef orc(void* r, SBA a, SBA b, bint exclusive, bint len_only):
+    cdef void orc(void* r, SBA a, SBA b, bint exclusive, bint len_only) nogil:
         # if len_only, r is an int* to uninitialized int
         #        else, r is an SBA*, with 0ed members
         cdef bint a_nempty = 1
@@ -447,42 +454,71 @@ cdef class SBA:
         else:
             (<SBA>r).len.len = r_len
             if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-                (<SBA>r).shorten()
+                with gil:
+                    (<SBA>r).shorten()
     
     @staticmethod
-    def orb(SBA a not None, SBA b not None) -> SBA:
+    def orb(SBA a not None, SBA b not None):
         cdef SBA ret
         if ALLOC_THEN_SHRINK:
             ret = SBA.fromCapacity(a.len.len + b.len.len, False)
         else:
             ret = SBA.__new__(SBA)
-        SBA.orc(<void*>ret, a, b, 0, 0)
+        SBA.orc(<void*>ret, a, b, False, False)
         return ret
     
     @staticmethod
-    def orl(SBA a not None, SBA b not None) -> int:
+    def orl(SBA a not None, SBA b not None):
         cdef int ret
-        SBA.orc(<void*>&ret, a, b, 0, 1)
+        SBA.orc(<void*>&ret, a, b, False, True)
         return ret
     
     @staticmethod
-    def xorb(SBA a not None, SBA b not None) -> SBA:
+    def orp(SBA query not None, np.ndarray[dtype='object', ndim=1] arr):
+        cdef int ln = <int>len(arr)
+        cdef np.ndarray out = np.zeros(ln, dtype=np.intc)
+        cdef int* out_ptr = <int*>PyArray_DATA(<void*>out)
+        cdef void** arr_ptr = <void**>PyArray_DATA(<void*>arr)
+        cdef int i
+        for i in prange(ln, nogil=True):
+            if not Py_IS_TYPE(arr_ptr[i], <void*>SBA):
+                with gil:
+                    raise TypeError("Found non SBA object in arr.")
+            SBA.orc(<void*>&out_ptr[i], query, <SBA>arr_ptr[i], False, True)
+        return out
+    
+    @staticmethod
+    def xorb(SBA a not None, SBA b not None):
         cdef SBA ret
         if ALLOC_THEN_SHRINK:
             ret = SBA.fromCapacity(a.len.len + b.len.len, False)
         else:
             ret = SBA.__new__(SBA)
-        SBA.orc(<void*>ret, a, b, 1, 0)
+        SBA.orc(<void*>ret, a, b, True, False)
         return ret
     
     @staticmethod
-    def xorl(SBA a not None, SBA b not None) -> int:
+    def xorl(SBA a not None, SBA b not None):
         cdef int ret
-        SBA.orc(<void*>&ret, a, b, 1, 1)
+        SBA.orc(<void*>&ret, a, b, True, True)
         return ret
     
     @staticmethod
-    cdef andc(void* r, SBA a, SBA b, bint len_only):
+    def xorp(SBA query not None, np.ndarray[dtype='object', ndim=1] arr):
+        cdef int ln = <int>len(arr)
+        cdef np.ndarray out = np.zeros(ln, dtype=np.intc)
+        cdef int* out_ptr = <int*>PyArray_DATA(<void*>out)
+        cdef void** arr_ptr = <void**>PyArray_DATA(<void*>arr)
+        cdef int i
+        for i in prange(ln, nogil=True):
+            if not Py_IS_TYPE(arr_ptr[i], <void*>SBA):
+                with gil:
+                    raise TypeError("Found non SBA object in arr.")
+            SBA.orc(<void*>&out_ptr[i], query, <SBA>arr_ptr[i], True, True)
+        return out
+    
+    @staticmethod
+    cdef void andc(void* r, SBA a, SBA b, bint len_only) nogil:
         # if len_only, r is an int* to uninitialized int
         #        else, r is an SBA*, with 0ed members
         cdef bint a_nempty = 1
@@ -506,10 +542,11 @@ cdef class SBA:
         else:
             (<SBA>r).len.len = r_len
             if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-                (<SBA>r).shorten()
+                with gil:
+                    (<SBA>r).shorten()
     
     @staticmethod
-    def andb(SBA a not None, SBA b not None) -> SBA:
+    def andb(SBA a not None, SBA b not None):
         cdef SBA ret
         if ALLOC_THEN_SHRINK:
             ret = SBA.fromCapacity(b.len.len if a.len.len > b.len.len else a.len.len, False)
@@ -519,15 +556,29 @@ cdef class SBA:
         return ret
     
     @staticmethod
-    def andl(SBA a not None, SBA b not None) -> int:
+    def andl(SBA a not None, SBA b not None):
         cdef int ret
-        SBA.andc(<void*>&ret, a, b, 1)
+        SBA.andc(<void*>&ret, a, b, True)
         return ret
     
-    def andi(self, SBA b not None) -> SBA:
-        self.raiseIfViewing()
-        SBA.andc(<void*>self, self, b, 0)
+    def andi(self, SBA b not None):
+        self.raise_if_viewing()
+        SBA.andc(<void*>self, self, b, False)
         return self
+    
+    @staticmethod
+    def andp(SBA query not None, np.ndarray[dtype='object', ndim=1] arr):
+        cdef int ln = <int>len(arr)
+        cdef np.ndarray out = np.zeros(ln, dtype=np.intc)
+        cdef int* out_ptr = <int*>PyArray_DATA(<void*>out)
+        cdef void** arr_ptr = <void**>PyArray_DATA(<void*>arr)
+        cdef int i
+        for i in prange(ln, nogil=True):
+            if not Py_IS_TYPE(arr_ptr[i], <void*>SBA):
+                with gil:
+                    raise TypeError("Found non SBA object in arr.")
+            SBA.andc(<void*>&out_ptr[i], query, <SBA>arr_ptr[i], True)
+        return out
    
     def __add__(self, other):
         if not isinstance(self, SBA): # __radd__
@@ -542,23 +593,23 @@ cdef class SBA:
             return self.orb(self, other)
         cdef SBA cp = self.cp()
         if isinstance(other, int):
-            cp.turnOn(<int>other)
+            cp.turn_on(<int>other)
             return cp
         elif hasattr(other, "__getitem__"):
             cp = self.cp()
             for i in other:
                 if isinstance(i, int):
-                    cp.turnOn(<int>i)
+                    cp.turn_on(<int>i)
                 else:
                     raise TypeError("for + op, all elements in a list must be integers")
             return cp
         else:
             raise TypeError(str(type(other)) + " not supported for + op.")
     
-    def __and__(SBA self, other):
-        return self.__mul__(other)
+    def __or__(self, other):
+        return self.__add__(other)
     
-    cdef bint getBit(self, int index):
+    cdef bint get_bit(self, int index):
         cdef int left = 0
         cdef int right = self.len.len - 1
         cdef int middle
@@ -576,53 +627,47 @@ cdef class SBA:
     
     def get(self, index1, index2 = None):
         if index2 is None:
-            return self.getBit(index1)
+            return self.get_bit(index1)
         else:
             if index2 < index1:
                 tmp = index2
                 index2 = index1
                 index1 = tmp
-            return self.getSection(index1, index2)
+            return self.get_section(index1, index2)
     
     def __contains__(SBA self, index):
         if isinstance(index, int):
-            return self.getBit(index)
+            return self.get_bit(index)
         else:
             return False
 
-    def __mul__(SBA self, other):
+    def __mul__(SBA self not None, other):
         if isinstance(other, SBA):
             return self.andb(self, other)
         elif isinstance(other, int):
-            return self.getBit(other)
-        elif isinstance(other, float):
-            c = self.cp()
-            c.subsamplePortion(other)
-            return c
-        elif hasattr(other, "__getitem__"):
-            r = []
-            for i in other:
-                r.append(self.__mul__(i))
-            return r
+            return self.get_bit(other)
         else:
             raise TypeError(str(type(other)) + " not supported for * or & ops.")
     
-    def __mod__(SBA self, other):
+    def __and__(SBA self not None, other):
+        return self.__mul__(other)
+    
+    def __truediv__(SBA self not None, other):
+        cdef SBA c = self.cp()
         if isinstance(other, int):
-            c = self.cp()
-            c.subsampleLength(other)
+            c.subsample_length(other)
+            return c
+        elif isinstance(other, float):
+            c.subsample_portion(other)
             return c
         else:
-            raise TypeError(str(type(other)) + " not supported for % op.")
-
-    def __or__(self, other):
-        return self.__add__(other)
+            raise TypeError(str(type(other)) + " not supported for / op.")
     
-    def __xor__(SBA self, SBA other):
+    def __xor__(SBA self not None, other):
         return self.xorb(self, other)
     
-    cpdef rm(self, SBA rm):
-        self.raiseIfViewing()
+    cpdef void rm(self, SBA rm):
+        self.raise_if_viewing()
         cdef int a_from = 0
         cdef int a_to = 0
         cdef int a_val
@@ -643,14 +688,12 @@ cdef class SBA:
             a_to += 1
             a_from += 1
         self.len.len = a_to
-        self.shortenIfNeeded()
-
-        return self
+        self.shorten_if_needed()
     
-    def __sub__(self, other):
+    def __sub__(SBA self not None, other):
         cdef SBA cp = self.cp()
         if isinstance(other, int):
-            cp.turnOff(<int>other)
+            cp.turn_off(<int>other)
             return cp
         elif isinstance(other, SBA):
             cp.rm(other)
@@ -658,24 +701,29 @@ cdef class SBA:
         elif hasattr(other, "__getitem__"):
             for i in other:
                 if isinstance(i, int):
-                    cp.turnOff(<int>i)
+                    cp.turn_off(<int>i)
                 else:
-                    raise TypeError("for - op, all elements in a list must be integers")
+                    raise TypeError("for - op, all elements must be integers")
             return cp
         else:
             raise TypeError(str(type(other)) + " not supported for - op.")
     
-    cpdef shift(self, int n):
-        self.raiseIfViewing()
-        for i in range(self.len.len):
+    cpdef void shift(self, int n):
+        self.raise_if_viewing()
+        cdef int i = 0
+        while i < self.len.len:
             self.indices[i] += n
-        return self
+            i += 1
     
-    def __lshift__(self, int n):
-        return self.cp().shift(n)
+    def __lshift__(SBA self, int n):
+        cdef SBA cp = self.cp()
+        cp.shift(n)
+        return cp
 
-    def __rshift__(self, int n):
-        return self.cp().shift(-n)
+    def __rshift__(SBA self, int n):
+        cdef SBA cp = self.cp()
+        cp.shift(-n)
+        return cp
     
     @staticmethod
     cdef seedRand():
@@ -709,7 +757,7 @@ cdef class SBA:
                 else:
                     return op == Py_GE or op == Py_GT
 
-    def __richcmp__(self, other, int op):
+    def __richcmp__(self, other, int op): # HERE
         if isinstance(other, SBA):
             return self.compare(other, op)
         elif op == Py_EQ or op == Py_NE:
@@ -730,9 +778,11 @@ cdef class SBA:
     
     def subsample(self, amount):
         if isinstance(amount, int):
-            self.subsampleLength(amount)
+            self.subsample_length(amount)
+            return self
         elif isinstance(amount, float):
-            self.subsamplePortion(amount)
+            self.subsample_portion(amount)
+            return self
         else:
             raise TypeError("arg must be an int or a float")
 
@@ -740,8 +790,8 @@ cdef class SBA:
     cdef int _qsort_compare(const void* a, const void* b) nogil:
         return (<int*>a)[0] - (<int*>b)[0]
     
-    cdef subsampleLength(self, int amount):
-        self.raiseIfViewing()
+    cdef void subsample_length(self, int amount):
+        self.raise_if_viewing()
         if self.len.len <= amount:
             return
         cdef int i = self.len.len
@@ -752,10 +802,10 @@ cdef class SBA:
             self.indices[j], self.indices[i] = self.indices[i], self.indices[j]
         self.len.len = amount
         qsort(self.indices, self.len.len, sizeof(self.indices[0]), &SBA._qsort_compare)
-        self.shortenIfNeeded()
+        self.shorten_if_needed()
 
-    cdef int subsamplePortion(self, float amount) except -1:
-        self.raiseIfViewing()
+    cdef int subsample_portion(self, float amount) except -1:
+        self.raise_if_viewing()
         if amount < 0 or amount > 1:
             raise SBAException("amount must be from 0 to 1, inclusively")
         cdef int check_val = <int>(amount * RAND_MAX)
@@ -767,10 +817,9 @@ cdef class SBA:
                 to_offset += 1
             from_offset += 1
         self.len.len = to_offset
-        # return 0
     
     @staticmethod
-    cdef SBA encodeLinear(float input, int num_on_bits, int length):
+    cdef SBA encode_linear(float input, int num_on_bits, int length):
         if num_on_bits > length:
             raise SBAException("The number of ON bits can't exceed the length of the array.")
         cdef SBA ret = SBA.fromCapacity(num_on_bits, False)
@@ -781,7 +830,7 @@ cdef class SBA:
         return ret
     
     @staticmethod
-    cdef SBA encodePeriodic(float input, float period, int num_on_bits, int length):
+    cdef SBA encode_periodic(float input, float period, int num_on_bits, int length):
         if input < 0:
             input *= -<float>1
         if num_on_bits > length:
@@ -810,6 +859,6 @@ cdef class SBA:
     @staticmethod
     def encode(float input, int num_on_bits, int size, float period = 0):
         if period == 0:
-            return SBA.encodeLinear(input, num_on_bits, size)
+            return SBA.encode_linear(input, num_on_bits, size)
         else:
-            return SBA.encodePeriodic(input, period, num_on_bits, size)
+            return SBA.encode_periodic(input, period, num_on_bits, size)

@@ -4,7 +4,7 @@ import unittest
 from sba import *
 from array import array
 import numpy as np
-from time import time
+from timeit import default_timer as timer
 
 def get_random_indices(n=100,m=100):
     ''' at most n elements from m-1 to -m '''
@@ -31,9 +31,9 @@ class Test(unittest.TestCase):
             SBA.from_iterable([3, 2, 1])
         with self.assertRaises(SBAException):
             SBA.from_iterable([1, 1, 1])
-        with self.assertRaises(SBAException):
+        with self.assertRaises(TypeError):
             SBA.from_iterable(['hi', 2, 1])
-        with self.assertRaises(Exception):
+        with self.assertRaises(SBAException):
             SBA.from_iterable([0xFFFFFFFF + 1])
         self.assertEqual(SBA.from_capacity(5), [0, 1, 2, 3, 4])
         self.assertEqual(SBA.from_range(2, 5), [2, 3, 4, 5])
@@ -106,7 +106,8 @@ class Test(unittest.TestCase):
         a_cp = SBA.from_iterable(a)
         self.assertEqual(a << 2, [7, 4, 3])
         self.assertEqual(a, a_cp)
-        self.assertEqual(a.shift(-4), [1, -2, -3])
+        a.shift(-4)
+        self.assertEqual(a, [1, -2, -3])
         self.assertNotEqual(a, a_cp)
 
     def test_subsample(self):
@@ -115,7 +116,8 @@ class Test(unittest.TestCase):
         a.subsample(0.5)
         self.assertTrue(len(a) <= len(a_cp))
         self.assertTrue(all([i in a_cp for i in a]))
-        self.assertTrue(len(a_cp.subsample(0)) == 0)
+        a_cp.subsample(0)
+        self.assertTrue(len(a_cp) == 0)
 
     def test_encoding(self):
         self.assertEqual(SBA.encode(0.5, 3, 100), [51, 50, 49])
@@ -143,7 +145,6 @@ class Test(unittest.TestCase):
         self.assertEqual(len(a | b), SBA.orl(a, b))
         self.assertEqual(a ^ b, [3, 0])
         self.assertEqual(len(a ^ b), SBA.xorl(a, b))
-        self.assertEqual(a & [5, 7, 1], [False, False, True])
     
     def test_inplace_ops(self):
         a = SBA.from_iterable([1, 2, 3])
@@ -209,24 +210,18 @@ class Test(unittest.TestCase):
         for i in SBA.andb(a, a_cp):
             self.assertTrue(not i in rm)
 
-# def speed_test():
-#     start = time()
-#     sub = 0
-#     for i in range(10000):
-#         substart = time()
-#         a = SBA.from_iterable(get_random_indices(1000, 1000))
-#         b = SBA.from_iterable(get_random_indices(1000, 1000))
-#         substop = time()
-#         sub += substop - substart
-#         SBA.andb(a, b)
-#         SBA.andl(a, b)
-#         SBA.orb(a, b)
-#         SBA.orl(a, b)
-#         SBA.xorb(a, b)
-#         SBA.xorl(a, b)
-#         a.cp().rm(b)
-#     stop = time()
-#     print(stop - start - sub)
+def speed_test():
+    a = SBA.from_iterable(range(0, 100000, 3))
+    b = SBA.from_iterable(range(0, 100000, 5))
+    start = timer()
+    SBA.andb(a, b)
+    SBA.andl(a, b)
+    SBA.orb(a, b)
+    SBA.orl(a, b)
+    SBA.xorb(a, b)
+    SBA.xorl(a, b)
+    stop = timer()
+    print(round((stop - start) * 100000))
 
 if __name__ == "__main__":
     SBA.seed_rand()
