@@ -2,32 +2,33 @@
 
 A sparse bit array stores the indices of the bits that are ON. Made in cython.
 
-A python stub is provided for type hinting and autocomplete. Make sure to use pylance if you're using vscode.
-
 ## Overview
 
 ```python
 >>> from sba import *
->>> a = SBA.from_iterable([0, 3, 40]) # an array with the bits at index 0, 3, and 40 set to ON
->>> a
+>>> z = SBA.iterable([0, 3, 40]) # an SBA with the bits at index 0, 3, and 40 set to ON
+>>> z
 [0, 3, 40]
->>> a.set(3, False)
->>> a
+>>> z.set(3, False)
+>>> z
 [0 40]
 
 
->>> b = SBA.from_iterable([0, 3, 50])
->>> a & b # overloaded ops
-[0 3]
+>>> y = SBA.iterable([0, 3, 40, 50])
+>>> z & y # overloaded ops
+[0 40]
+>>> z.andl(y) # The number of ON bits shared between z AND y
+2
 
->>> b.to_buffer() # convert to or from numpy ndarray
+
+>>> y.to_np() # numpy ndarray conversion
 array([ 0,  3, 50], dtype=int32)
 
->>> memoryview(b)[0] # implements buffer protocol
+>>> memoryview(y)[0] # implements buffer protocol
 0
 
 >>> # Randomly flips bits OFF, where each bit has a 33% chance of remaining ON
->>> SBA([1, 2, 3, 4, 5, 6]) * (1 / 3)
+>>> SBA.length(6) * (1 / 3)
 [2 5]
 
 >>> # encodes a float value by turning 3 bits ON in an array with a total size of 100

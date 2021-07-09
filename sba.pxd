@@ -22,40 +22,44 @@ cdef class SBA:
     
     @staticmethod
     cdef inline void c_verify_input(bint enable) 
-    cdef inline int raise_if_viewing(self) except -1
-    cdef inline void range(self, int start_inclusive, int stop_inclusive) 
+    cdef inline int raise_if_viewing(self) nogil except -1
+    cdef inline void range_indices(self, int start_inclusive, int stop_inclusive) nogil
     cdef inline void lengthen_if_needed(self, int length_override = -1) nogil
     cdef inline void shorten(self)
-    cdef inline void shorten_if_needed(self)
+    cdef inline void shorten_if_needed(self, bint ignore_strict_shorten = *) nogil
     @staticmethod
-    cdef SBA c_from_range(int start_inclusive, int stop_inclusive)
+    cdef SBA c_range(int start_inclusive, int stop_inclusive)
     @staticmethod
-    cdef SBA c_from_capacity(int cap, bint default)
-    cpdef np.ndarray to_buffer(self, bint give_ownership = *)
+    cdef SBA capacity(int cap, bint default)
+    @staticmethod
+    cdef SBA encode_linear(float input, int num_on_bits, int length)
+    @staticmethod
+    cdef SBA encode_periodic(float input, float period, int num_on_bits, int length)
+    cpdef np.ndarray to_np(self, bint give_ownership = *)
     cpdef print_raw(self)
     cdef void turn_on(self, int index)
     cdef void turn_off(self, int index)
-    cdef inline int check_index(self, int index) except -1
+    cdef inline int check_index(self, int index) nogil except -1
     cdef SBA get_section(self, int start_inclusive, int stop_inclusive)
     cpdef SBA cp(self)
     cdef inline void _get_one(SBA a, int* offset, int* value, bint* nempty) nogil
     cdef inline void _get_both(SBA a, int* a_offset, int* a_val, bint* a_empty, SBA b, int* b_offset, int* b_val, bint* b_empty) nogil
     cdef inline void _add_to_output(SBA r, int* r_len, int val, bint len_only) nogil
     @staticmethod
+    cdef inline SBA alloc_orc(SBA a, SBA b)
+    @staticmethod
     cdef void orc(void* r, SBA a, SBA b, bint exclusive, bint len_only) nogil
     @staticmethod
-    cdef void andc(void* r, SBA a, SBA b, bint len_only) nogil
-    cdef bint get_bit(self, int index)
-    cpdef void rm(self, SBA rm)
-    cpdef void shift(self, int n)
+    cdef inline SBA alloc_andc(SBA a, SBA b)
     @staticmethod
-    cdef seedRand()
+    cdef void andc(void* r, SBA a, SBA b, bint len_only) nogil
+    cdef bint get_bit(self, int index) nogil
+    cpdef void rm(self, SBA rm)
+    cdef void c_shift(self, int n) nogil
+    @staticmethod
+    cdef c_seed_rand()
     cpdef bint compare(self, SBA other, int op)
     @staticmethod
     cdef int _qsort_compare(const void* a, const void* b) nogil
     cdef void subsample_length(self, int amount)
     cdef int subsample_portion(self, float amount) except -1
-    @staticmethod
-    cdef SBA encode_linear(float input, int num_on_bits, int length)
-    @staticmethod
-    cdef SBA encode_periodic(float input, float period, int num_on_bits, int length)

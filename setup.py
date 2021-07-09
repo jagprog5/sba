@@ -36,7 +36,7 @@ setup(
     data_files = [('sba', ['py.typed', 'sba.pyi', 'sba.pxd']),],
     include_dirs=[numpy.get_include()],
     name = "sparse-bit-array",
-    version = "1.1.1",
+    version = "1.1.2",
     author = "John Giorshev",
     description = "sparse bit array",
     long_description = long_description,
