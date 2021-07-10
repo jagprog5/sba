@@ -30,32 +30,30 @@ turn_off function ignores this, and only shortens when needed.
 cdef bint STRICT_SHORTEN = False
 
 cdef extern from "math.h":
-    float floorf(float)
-    float log10f(float)
-    int roundf(float)
+    float floorf(float) nogil
+    float log10f(float) nogil
+    int roundf(float) nogil
 
 cdef extern from "time.h":
-    void* time(void*)
+    void* time(void*) nogil
 
 cdef extern from "object.h":
-    int PyObject_TypeCheck(void*, void*) nogil
+    int Py_IS_TYPE(void*, void*) nogil
 
 cdef extern from "numpy/arrayobject.h":
-    void *PyArray_malloc(int nbytes) # it's not guarenteed that numpy uses the same mem allocator as python
-    void PyArray_free(void *ptr)
-    void *PyArray_realloc(void *ptr, int nbytes)
-    void PyArray_ENABLEFLAGS(np.ndarray arr, int flags)
-    void *PyArray_DATA(void *arr)
+    void *PyArray_malloc(int nbytes) nogil
+    void PyArray_free(void *ptr) nogil
+    void *PyArray_realloc(void *ptr, int nbytes) nogil
+    void PyArray_ENABLEFLAGS(np.ndarray arr, int flags) nogil
+    void *PyArray_DATA(void *arr) nogil
 
 class SBAException(Exception):
     pass
 
 cdef bint do_sba_verify = True 
 
+@cython.final
 cdef class SBA:
-    # snake case indicates the python function, lower camel case is for the c function.
-    # cython doesn't support cpdef with @staticmethod, which neccessitates this ^
-
     @staticmethod
     cdef inline void c_verify_input(bint enable):
         do_sba_verify = enable
@@ -88,17 +86,15 @@ cdef class SBA:
         '''
         if (self.len.len if length_override == -1 else length_override) >= self.cap: # ==
             self.cap = self.cap + (self.cap >> 1) + 1; # cap = cap * 1.5 + 1, estimate for golden ratio (idk python uses the same strat)
-            with gil:
-                self.indices = <int*>PyArray_realloc(self.indices, sizeof(self.indices[0]) * self.cap)
+            self.indices = <int*>PyArray_realloc(self.indices, sizeof(self.indices[0]) * self.cap)
     
-    cdef inline void shorten(self):
+    cdef inline void shorten(self) nogil:
         self.cap = self.len.len
         self.indices = <int*>PyArray_realloc(self.indices, sizeof(self.indices[0]) * self.cap)
 
     cdef inline void shorten_if_needed(self, bint ignore_strict_shorten = False) nogil:
         if (STRICT_SHORTEN and not ignore_strict_shorten) or self.len.len < self.cap >> 1:
-            with gil:
-                self.shorten()
+            self.shorten()
     
     @staticmethod
     cdef SBA c_range(int start_inclusive, int stop_inclusive):
@@ -327,7 +323,7 @@ cdef class SBA:
     def __len__(self):
         return self.len.len
     
-    cdef void turn_on(self, int index):
+    cdef void turn_on(self, int index) nogil:
         self.raise_if_viewing()
         cdef int left = 0
         cdef int right = self.len.len - 1
@@ -351,7 +347,7 @@ cdef class SBA:
         self.len.len += 1
         self.indices[middle] = index
     
-    cdef void turn_off(SBA self, int index):
+    cdef void turn_off(SBA self, int index) nogil:
         self.raise_if_viewing()
         cdef int left = 0
         cdef int right = self.len.len - 1
@@ -375,6 +371,7 @@ cdef class SBA:
             self.turn_on(index)
         else:
             self.turn_off(index)
+        return self
 
     cdef inline int check_index(SBA self, int index) nogil except -1:
         if index >= self.len.len:
@@ -394,7 +391,7 @@ cdef class SBA:
     def __setitem__(SBA self, int index, int value):
         self.__delitem__(index)
         self.turn_on(value)
-    
+
     cdef SBA get_section(SBA self, int start_inclusive, int stop_inclusive):
         # start <= stop
         cdef SBA ret
@@ -507,8 +504,7 @@ cdef class SBA:
         else:
             (<SBA>r).len.len = r_len
             if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-                with gil:
-                    (<SBA>r).shorten()
+                (<SBA>r).shorten()
     
     def orb(SBA a not None, SBA b not None):
         cdef SBA ret = SBA.alloc_andc(a, b)
@@ -527,7 +523,7 @@ cdef class SBA:
         cdef void** arr_ptr = <void**>PyArray_DATA(<void*>arr)
         cdef int i
         for i in prange(ln, nogil=True):
-            if not PyObject_TypeCheck(arr_ptr[i], <void*>SBA):
+            if not Py_IS_TYPE(arr_ptr[i], <void*>SBA):
                 with gil:
                     raise TypeError("Found non SBA object in arr.")
             SBA.orc(<void*>&out_ptr[i], query, <SBA>arr_ptr[i], False, True)
@@ -550,7 +546,7 @@ cdef class SBA:
         cdef void** arr_ptr = <void**>PyArray_DATA(<void*>arr)
         cdef int i
         for i in prange(ln, nogil=True):
-            if not PyObject_TypeCheck(arr_ptr[i], <void*>SBA):
+            if not Py_IS_TYPE(arr_ptr[i], <void*>SBA):
                 with gil:
                     raise TypeError("Found non SBA object in arr.")
             SBA.orc(<void*>&out_ptr[i], query, <SBA>arr_ptr[i], True, True)
@@ -581,8 +577,7 @@ cdef class SBA:
         else:
             (<SBA>r).len.len = r_len
             if ALLOC_THEN_SHRINK or STRICT_SHORTEN:
-                with gil:
-                    (<SBA>r).shorten()
+                (<SBA>r).shorten()
     
     @staticmethod
     cdef inline SBA alloc_andc(SBA a, SBA b):
@@ -615,7 +610,7 @@ cdef class SBA:
         cdef void** arr_ptr = <void**>PyArray_DATA(<void*>arr)
         cdef int i
         for i in prange(ln, nogil=True):
-            if not PyObject_TypeCheck(arr_ptr[i], <void*>SBA):
+            if not Py_IS_TYPE(arr_ptr[i], <void*>SBA):
                 with gil:
                     raise TypeError("Found non SBA object in arr.")
             SBA.andc(<void*>&out_ptr[i], query, <SBA>arr_ptr[i], True)
@@ -706,7 +701,7 @@ cdef class SBA:
     def __xor__(SBA self, other):
         return self.xorb(other)
     
-    cpdef void rm(SBA self, SBA rm):
+    cdef void c_rm(SBA self, SBA rm) nogil:
         self.raise_if_viewing()
         cdef int a_from = 0
         cdef int a_to = 0
@@ -729,6 +724,10 @@ cdef class SBA:
             a_from += 1
         self.len.len = a_to
         self.shorten_if_needed()
+    
+    def rm(SBA self, SBA rm):
+        self.c_rm(rm)
+        return self
     
     def __sub__(SBA self, other):
         cdef SBA cp = self.cp()
@@ -757,6 +756,7 @@ cdef class SBA:
 
     def shift(SBA self, int n):
         self.c_shift(n)
+        return self
     
     def __lshift__(SBA self, int n):
         cdef SBA cp = self.cp()
@@ -769,7 +769,7 @@ cdef class SBA:
         return cp
     
     @staticmethod
-    cdef c_seed_rand():
+    cdef void c_seed_rand() nogil:
         srand(<unsigned int>time(NULL))
 
     @staticmethod
@@ -780,7 +780,7 @@ cdef class SBA:
     def rand_int() -> int:
         return rand()
     
-    cpdef bint compare(SBA self, SBA other, int op):
+    cdef bint compare(SBA self, SBA other, int op) nogil:
         cdef int i
         if op == Py_EQ or op == Py_NE:
             if self.len.len != other.len.len:
@@ -834,7 +834,7 @@ cdef class SBA:
     cdef int _qsort_compare(const void* a, const void* b) nogil:
         return (<int*>a)[0] - (<int*>b)[0]
     
-    cdef void subsample_length(SBA self, int amount):
+    cdef void subsample_length(SBA self, int amount) nogil:
         self.raise_if_viewing()
         if self.len.len <= amount:
             return
@@ -848,7 +848,7 @@ cdef class SBA:
         qsort(self.indices, self.len.len, sizeof(self.indices[0]), &SBA._qsort_compare)
         self.shorten_if_needed()
 
-    cdef int subsample_portion(SBA self, float amount) except -1:
+    cdef int subsample_portion(SBA self, float amount) nogil except -1:
         self.raise_if_viewing()
         if amount < 0 or amount > 1:
             raise SBAException("amount must be from 0 to 1, inclusively")

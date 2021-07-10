@@ -10,7 +10,6 @@ A sparse bit array stores the indices of the bits that are ON. Made in cython.
 >>> z
 [0, 3, 40]
 >>> z.set(3, False)
->>> z
 [0 40]
 
 
@@ -19,7 +18,6 @@ A sparse bit array stores the indices of the bits that are ON. Made in cython.
 [0 40]
 >>> z.andl(y) # The number of ON bits shared between z AND y
 2
-
 
 >>> y.to_np() # numpy ndarray conversion
 array([ 0,  3, 50], dtype=int32)

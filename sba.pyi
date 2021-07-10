@@ -1,10 +1,11 @@
 from __future__ import annotations
 import numpy
-from typing import Iterable, Union, Optional, Callable, overload
+from typing import Iterable, Union, Optional, Callable, final, overload
 
 class SBAException(Exception):
     pass
 
+@final
 class SBA:
     '''
     SBAs can be instantiated through factory methods:
@@ -46,7 +47,7 @@ class SBA:
     def length(len: int = 0) -> SBA:
         '''
         ```python
-        >>> SBA.len(5)
+        >>> SBA.length(5)
         [0 1 2 3 4]
         ```
         '''
@@ -141,13 +142,13 @@ class SBA:
         ```
         '''
     
-    def set(self, index: int, state: bool = True) -> None:
-        ''' Sets the state of a bit, as indicated by the position in the array. '''
+    def set(self, index: int, state: bool = True) -> SBA:
+        ''' Sets the state of a bit, as indicated by the position in the array. Returns self. '''
     
     def __delitem__(self, index):
         ''' Turns off a bit, as indicated by its position in the SBA. '''
 
-    def __setitem__(self, index: int, value: int) -> None:
+    def __setitem__(self, index: int, value: int):
         '''
         Turns OFF a bit, as indicated by `index`: a position in the SBA,  
         then turns ON a bit indicated by `value`: a bit in the underlying array.  
@@ -220,10 +221,10 @@ class SBA:
         ```python
         >>> from sba import *
         >>> import numpy as np
-        >>> arr = np.array([SBA.len(i) for i in range(3)], dtype='object')           
+        >>> arr = np.array([SBA.length(i) for i in range(3)], dtype='object')           
         >>> arr
         array([[], [0], [0 1]], dtype=object)
-        >>> a = SBA.len(3)
+        >>> a = SBA.length(3)
         >>> a
         [0 1 2]
         >>> SBA.andp(a, arr)
@@ -307,7 +308,7 @@ class SBA:
         if `other` is an `float`:
             Returns a random subsample where each bit has `other` chance of being in the output.  
         ```python
-        >>> SBA.length(6) * (1 / 3)
+        >>> SBA.lengthgth(6) * (1 / 3)
         [2 5]
         True
         ```
@@ -335,11 +336,11 @@ class SBA:
         ```
         '''
     
-    def rm(self, r: SBA) -> None:
-        ''' Turns off all bits that are in r. '''
+    def rm(self, r: SBA) -> SBA:
+        ''' Turns off all bits that are in r. Returns self. '''
     
-    def shift(self, n: int) -> None:
-        ''' Shifts self by n places. A positive n is a increases each index. '''
+    def shift(self, n: int) -> SBA:
+        ''' Shifts self by n places. A positive n is a increases each index. Returns self. '''
     
     @staticmethod
     def seed_rand():

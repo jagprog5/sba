@@ -144,6 +144,11 @@ class Test(unittest.TestCase):
         self.assertEqual(a ^ b, [3, 0])
         self.assertEqual(len(a ^ b), SBA.xorl(a, b))
     
+    def test_par(self):
+        arr = np.array([SBA.length(i) for i in range(3)], dtype='object')           
+        a = SBA.length(3)
+        self.assertTrue((SBA.andp(a, arr) == [0, 1, 2]).all())
+    
     def test_inplace_ops(self):
         a = SBA.iterable([1, 2, 3])
         b = SBA.iterable([0, 1, 2])
