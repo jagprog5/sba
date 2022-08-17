@@ -1,3 +1,5 @@
+# This repo is not in a working state
+
 # Sparse Bit Array
 
 A sparse bit array stores the indices of the bits that are ON. Made in cython.
